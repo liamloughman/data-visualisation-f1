@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <title>F1 Data Visualization - Splash</title>
+        <link rel="stylesheet" href="css/style.css">
+    </head>
+    <body class="splash-body">
+    <div class="logo-container">
+        <img src="images/f1-logo.png" alt="F1 Logo" class="f1-logo" id="f1-logo">
+    </div>
+
+    <script>
+        // Wait 5 seconds, then fade out the logo and redirect
+        setTimeout(() => {
+        const logo = document.getElementById('f1-logo');
+        logo.style.transition = 'opacity 2s';
+        logo.style.opacity = 0;
+        // After fade completes (2s), redirect
+        setTimeout(() => {
+            window.location.href = 'overall.html';
+        }, 1000);
+        }, 2000);
+    </script>
+    </body>
+</html>
