@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>Per Race Stats</title>
+    <title>F1 Data Visualization</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="js/d3.v7.min.js"></script>
-    <script src="js/main.js" defer></script>
+    <script src="js/race.js" defer></script>
     <script>
         if (performance.getEntriesByType("navigation")[0].type === "reload") {
-        window.location.href = "index.html";
+            window.location.href = "index.html";
         }
     </script>
-    </head>
-    <body class="stats-body">
+</head>
+<body class="stats-body" onload="main()">
     <header class="main-header">
         <button onclick="window.location.href='overall.html'">Overall</button>
         <button onclick="window.location.href='season.html'">Seasons</button>
@@ -21,8 +21,61 @@
     </header>
 
     <main class="stats-content">
-        <h1>Per Race F1 Stats</h1>
-        <div id="race-chart"></div>
+        <div id="Selectors"></div>
+
+        <!-- Podium Placeholder -->
+        <section id="podium">
+            <h2>Podium (Top 3)</h2>
+            <ol>
+                <li>Driver 1</li>
+                <li>Driver 2</li>
+                <li>Driver 3</li>
+            </ol>
+        </section>
+
+        <!-- Fastest Lap Time Placeholder -->
+        <section id="fastest-lap">
+            <h2>Fastest Lap Time</h2>
+            <p>Driver: Fastest Lap Time</p>
+        </section>
+
+        <!-- Starting Grid and Position Per Lap Chart -->
+        <section id="starting-grid">
+            <h2>Starting Grid</h2>
+            <table>
+                <tr><th>Position</th><th>Driver</th></tr>
+                <tr><td>1</td><td>Driver 1</td></tr>
+                <tr><td>2</td><td>Driver 2</td></tr>
+                <!-- Add more rows as needed -->
+            </table>
+            <aside id="position-per-lap">
+                <h3>Position Per Lap Chart</h3>
+                <div>Chart Placeholder</div>
+            </aside>
+        </section>
+
+        <!-- Finishing Grid Placeholder -->
+        <section id="finishing-grid">
+            <h2>Finishing Grid</h2>
+            <table>
+                <tr><th>Position</th><th>Driver</th><th>Time Interval to P1</th><th>Average Speed</th></tr>
+                <tr><td>1</td><td>Driver 1</td><td>0s</td><td>200 km/h</td></tr>
+                <tr><td>2</td><td>Driver 2</td><td>5s</td><td>198 km/h</td></tr>
+                <!-- Add more rows as needed -->
+            </table>
+        </section>
+
+        <!-- Lap Chart Placeholder -->
+        <section id="lap-chart">
+            <h2>Lap Chart</h2>
+            <div>Lap Time Chart Placeholder</div>
+        </section>
+
+        <!-- Tyre Chart Placeholder -->
+        <section id="tyre-chart">
+            <h2>Tyre Chart</h2>
+            <div>Tyre Usage Chart Placeholder</div>
+        </section>
     </main>
-    </body>
+</body>
 </html>

@@ -3,18 +3,18 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-        <title>Overall Season Stats</title>
+        <title>F1 Data Visualization</title>
         <link rel="stylesheet" href="css/style.css">
         <!-- Include d3 here -->
         <script src="js/d3.v7.min.js"></script>
-        <script src="js/main.js" defer></script>
+        <script src="js/overall.js" defer></script>
         <script>
             if (performance.getEntriesByType("navigation")[0].type === "reload") {
             window.location.href = "index.html";
             }
         </script>
     </head>
-    <body class="stats-body">
+    <body class="stats-body" onload="main()">
         <header class="main-header">
             <button onclick="window.location.href='overall.html'">Overall</button>
             <button onclick="window.location.href='season.html'">Seasons</button>
