@@ -391,6 +391,7 @@ function updateStartingGrid(grid) {
             tr.append('td').text(row.position);
             tr.append('td')
                 .attr('title', `${row.driverFullName} - ${row.constructorName}`)
+                .style('text-align', 'left')
                 .html(`
                     ${driverDisplay}
                     <img src="images/team_logos/${row.constructorId}.png"
@@ -435,6 +436,7 @@ function updateFinishingGrid(grid) {
 
             tr.append('td')
                 .attr('title', `${row.driverFullName} - ${row.constructorName}`)
+                .style('text-align', 'left')
                 .html(`
                     ${driverDisplay}
                     <img src="images/team_logos/${row.constructorId}.png"

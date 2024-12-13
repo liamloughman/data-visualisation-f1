@@ -244,15 +244,16 @@ button {
 }
 
 #grid-table table, #finishing-grid table {
-  table-layout: auto;
+  table-layout: fixed;
   width: auto;
   border-collapse: collapse;
 }
 
 #grid-table th, #finishing-grid th, #grid-table td, #finishing-grid td {
-  font-size: 12px; 
-  line-height: 1.2em;
-  padding: 10px;
+  font-size: 12px;
+  height: 30px;
+  line-height: 30px;
+  padding: 0px 10px;
   text-align: center;
   color: #fff;
   background-color: #222;
@@ -266,7 +267,9 @@ button {
 }
 
 .team-logo-small {
+  max-height: 90%;
   max-width: 40px;
+  object-fit: contain;
   margin-left: 5px;
   vertical-align: middle;
 }
