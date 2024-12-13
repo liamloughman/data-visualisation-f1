@@ -288,14 +288,48 @@ function getData(selectedRaceId) {
                 constructorId: d.constructorId,
                 constructorName: constructorNameMap[d.constructorId] || 'N/A'
             }));
-            console.log(selectedRaceId);
-            console.log(startingGrid);
-            console.log(finishingGrid);
 
+        lapTimesData.forEach(d => {
+            d.raceId = +d.raceId;
+            d.driverId = +d.driverId;
+            d.lap = +d.lap;
+            d.milliseconds = +d.milliseconds;
+        });
+
+        const filteredLaps = lapTimesData.filter(d => d.raceId === selectedRaceId);
+        
+        const laps = Array.from(new Set(filteredLaps.map(d => d.lap))).sort((a, b) => a - b);
+        
+        const positionData = [];
+        laps.forEach(lap => {
+            const lapRank = [];
+            filteredLaps
+                .filter(d => d.lap === lap)
+                .forEach(d => {
+                    const cumulativeTime = d3.sum(
+                        filteredLaps.filter(ld => ld.driverId === d.driverId && ld.lap <= lap),
+                        ld => ld.milliseconds
+                    );
+                    lapRank.push({ driverId: d.driverId, lap, cumulativeTime });
+                });
+
+            lapRank
+                .sort((a, b) => a.cumulativeTime - b.cumulativeTime)
+                .forEach((ranked, i) => {
+                    positionData.push({
+                        driverId: ranked.driverId,
+                        lap: ranked.lap,
+                        position: i + 1,
+                    });
+                });
+        });
+        
         updatePodium(podiumData);
         updateFastestLap(fastestLapData);
         updateStartingGrid(startingGrid);
         updateFinishingGrid(finishingGrid);
+        updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid);
+
     }).catch(console.error);
 }
 
@@ -430,9 +464,23 @@ function updateFinishingGrid(grid) {
     } else {
         grid.forEach(row => {
             const driverDisplay = row.driverCode === '\\N' ? row.forename : row.driverCode;
+            const timeStr = row.time;
+            const lowerTime = timeStr.toLowerCase();
+
+            let displayPosition;
+            
+            if (lowerTime.includes('lap')) {
+                displayPosition = row.position;
+            } else if (
+                (/^\+\d+(\.\d+)?$/.test(timeStr)) || (timeStr.includes(':'))
+            ) {
+                displayPosition = row.position;
+            } else {
+                displayPosition = 'DNF';
+            }
 
             const tr = tbody.append('tr');
-            tr.append('td').text(row.position);
+            tr.append('td').text(displayPosition);
 
             tr.append('td')
                 .attr('title', `${row.driverFullName} - ${row.constructorName}`)
@@ -444,11 +492,140 @@ function updateFinishingGrid(grid) {
                          class="team-logo-small" />
                 `);
 
-            tr.append('td').text(row.time);
+            tr.append('td').text(timeStr);
         });
     }
 
     d3.select('#finishing-grid')
+        .transition()
+        .duration(500)
+        .ease(d3.easeCubic)
+        .style('opacity', 1);
+}
+
+function updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid) {
+    d3.select('#chart-container').selectAll('*').remove();
+
+    let chartHeight;
+    if (startingGrid.length > 0) {
+        chartHeight = startingGrid.length * 30;
+    } else if (finishingGrid.length > 0) {
+        chartHeight = finishingGrid.length * 30;
+    } else {
+        chartHeight = 900; 
+    }
+
+    const chartContainer = d3.select('#chart-container');
+    chartContainer.style('height', `${chartHeight + 60}px`);
+
+    if (positionData.length === 0) {
+        chartContainer.append('div')
+            .style('color', '#fff')
+            .text('No lap position data available for this race.');
+        d3.select('#position-chart')
+            .transition()
+            .duration(500)
+            .style('opacity', 1);
+        return;
+    }
+
+    const containerNode = chartContainer.node();
+    const width = containerNode.getBoundingClientRect().width;
+    const height = containerNode.getBoundingClientRect().height;
+
+    const margin = { top: 20, right: 5, bottom: 20, left: 5 };
+    const topOffset = 25;
+    const bottomOffset = 25;
+    
+    const dataByDriver = d3.group(positionData, d => d.driverId);
+    const driversWithData = dataByDriver.size;
+    
+    let qualifiedDrivers = 0;
+    if (startingGrid.length > 0) {
+        qualifiedDrivers = startingGrid.length;
+    } else if (finishingGrid.length > 0) {
+        qualifiedDrivers = finishingGrid.length;
+    } else {
+        qualifiedDrivers = 0;
+    }
+
+    const missingDrivers = qualifiedDrivers - driversWithData;
+    const additionalOffset = missingDrivers > 0 ? missingDrivers * 30 : 0;
+
+    const xScale = d3.scaleLinear()
+        .domain(d3.extent(positionData.map(d => d.lap)))
+        .range([margin.left, width - margin.right]);
+
+    const maxPosition = d3.max(positionData, d => d.position);
+
+    const yScale = d3.scaleLinear()
+        .domain([1, maxPosition])
+        .range([margin.top + topOffset, height - margin.bottom - bottomOffset - additionalOffset]);
+
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+        .domain(positionData.map(d => d.driverId));
+
+    const svg = chartContainer
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .style('background', '#222')
+        .style('border-radius', '8px');
+
+    const xAxis = d3.axisBottom(xScale).tickFormat(d3.format('d'));
+    const yAxis = d3.axisLeft(yScale);
+
+    svg.append('g')
+       .attr('transform', `translate(0,${height - margin.bottom})`)
+       .call(xAxis)
+       .call(g => g.selectAll('text').attr('fill', '#fff'))
+       .call(g => g.selectAll('line').attr('stroke', '#fff'))
+       .call(g => g.selectAll('path').attr('stroke', '#fff'));
+
+    svg.append('g')
+       .attr('transform', `translate(${margin.left},0)`)
+       .call(yAxis)
+       .call(g => g.selectAll('*').style('display', 'none'));
+
+    const line = d3.line()
+        .x(d => xScale(d.lap))
+        .y(d => yScale(d.position));
+
+    for (const [driverId, lapsData] of dataByDriver.entries()) {
+        lapsData.sort((a, b) => a.lap - b.lap);
+
+        const color = colorScale(driverId);
+        
+        if (lapsData.length > 1) {
+            svg.append('path')
+                .datum(lapsData)
+                .attr('fill', 'none')
+                .attr('stroke', color)
+                .attr('stroke-width', 2)
+                .attr('d', line);
+        }
+        
+        const lastData = lapsData[lapsData.length - 1];
+
+        svg.append('circle')
+            .attr('cx', xScale(lastData.lap))
+            .attr('cy', yScale(lastData.position))
+            .attr('r', 4)
+            .attr('fill', color);
+
+        const driverLabel = driverCodeMap[driverId] !== 'N/A' 
+            ? driverCodeMap[driverId] 
+            : driverMap[driverId].split(' ')[0];
+
+        svg.append('text')
+            .attr('x', xScale(lastData.lap) + 5)
+            .attr('y', yScale(lastData.position))
+            .attr('dy', '0.35em')
+            .attr('fill', '#fff')
+            .attr('font-size', '10px');
+    }
+
+    d3.select('#position-chart')
         .transition()
         .duration(500)
         .ease(d3.easeCubic)

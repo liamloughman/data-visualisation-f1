@@ -212,14 +212,12 @@ button {
 #position-chart {
   flex: 1;
   text-align: center;
-  background-color: #222;
   border-radius: 8px;
   color: #fff;
   opacity: 0;
 }
 
 #chart-container {
-  height: 65px;
   width: auto;
 }
 
