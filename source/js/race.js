@@ -1,4 +1,3 @@
-
 function main() {
     const racesCsvPath = 'data/Races.csv';  
     
@@ -53,6 +52,13 @@ function createSelectors(years, racesByYear) {
                                               .style('border-radius', '8px')
                                               .style('cursor', 'pointer');
 
+    yearSelector.on('mouseover', function() {
+        d3.select(this).style('border', '1px solid #ee2a26');
+    })
+    .on('mouseout', function() {
+        d3.select(this).style('border', '1px solid transparent');
+    });
+
     yearSelector.append('option')
         .attr('value', '')
         .text('Select Year')
@@ -92,6 +98,14 @@ function createSelectors(years, racesByYear) {
                                               .style('border-radius', '8px')
                                               .style('cursor', 'pointer');
 
+    raceSelector.on('mouseenter', function() {
+        if (!this.disabled) {
+            d3.select(this).style('border', '1px solid #ee2a26');
+        }
+    })
+    .on('mouseleave', function() {
+        d3.select(this).style('border', '1px solid transparent');
+    });
     yearSelectorContainer.transition()
         .duration(200)
         .style('opacity', 1);
@@ -123,7 +137,7 @@ function createSelectors(years, racesByYear) {
 
         raceSelector.on('change', function () {
             const selectedRaceId = +this.value;
-            populateBoxes(selectedRaceId);
+            getData(selectedRaceId);
         });
     });
 }
@@ -147,13 +161,14 @@ function initializePodiumAndFastestLap() {
         });
 }
 
-function populateBoxes(selectedRaceId) {
+function getData(selectedRaceId) {
     const qualifyingCsvPath = 'data/qualifying.csv';
     const resultsCsvPath = 'data/results.csv';
     const driversCsvPath = 'data/drivers.csv';
     const constructorsCsvPath = 'data/constructors.csv';
     const statusCsvPath = 'data/status.csv';
     const pitStopsCsvPath = 'data/pit_stops.csv';
+    const lapTimesCsvPath = 'data/lap_times.csv';
 
     Promise.all([
         d3.csv(qualifyingCsvPath),
@@ -161,8 +176,9 @@ function populateBoxes(selectedRaceId) {
         d3.csv(driversCsvPath),
         d3.csv(constructorsCsvPath),
         d3.csv(statusCsvPath),
-        d3.csv(pitStopsCsvPath)
-    ]).then(function ([qualifyingData, resultsData, driversData, constructorsData, statusData, pitStopsData]) {
+        d3.csv(pitStopsCsvPath),
+        d3.csv(lapTimesCsvPath)
+    ]).then(function ([qualifyingData, resultsData, driversData, constructorsData, statusData, pitStopsData, lapTimesData]) {
         
         qualifyingData.forEach(d => (d.raceId = +d.raceId));
         resultsData.forEach(d => {
@@ -239,8 +255,47 @@ function populateBoxes(selectedRaceId) {
         
         }
 
+        const startingGrid = qualifyingData
+        .filter(q => q.raceId === selectedRaceId)
+        .sort((a, b) => +a.position - +b.position)
+        .map(d => {
+            const matchingResult = resultsData.find(r => r.raceId === selectedRaceId && r.driverId === d.driverId);
+            const driverFullName = driverMap[d.driverId] || 'Unknown Driver';
+
+            return {
+                position: +d.position,
+                driverId: +d.driverId,
+                driverCode: driverCodeMap[+d.driverId] || 'N/A',
+                driverFullName: driverFullName,
+                forename: driverFullName.split(' ')[0], 
+                time: determineBestTime(d.q1, d.q2, d.q3),
+                constructorId: matchingResult ? matchingResult.constructorId : null,
+                constructorName: matchingResult ? constructorNameMap[matchingResult.constructorId] : 'N/A'
+            };
+        });
+
+
+        const finishingGrid = resultsData
+            .filter(r => r.raceId === selectedRaceId)
+            .sort((a, b) => +a.positionOrder - +b.positionOrder)
+            .map(d => ({
+                position: +d.positionOrder,
+                driverId: +d.driverId,
+                driverCode: driverCodeMap[+d.driverId] || 'N/A',
+                driverFullName: driverMap[+d.driverId] || 'Unknown Driver',
+                forename: driverMap[+d.driverId]?.split(' ')[0] || 'Unknown',
+                time: d.time !== '\\N' ? d.time : statusMap[+d.statusId] || 'Unknown Status',
+                constructorId: d.constructorId,
+                constructorName: constructorNameMap[d.constructorId] || 'N/A'
+            }));
+            console.log(selectedRaceId);
+            console.log(startingGrid);
+            console.log(finishingGrid);
+
         updatePodium(podiumData);
         updateFastestLap(fastestLapData);
+        updateStartingGrid(startingGrid);
+        updateFinishingGrid(finishingGrid);
     }).catch(console.error);
 }
 
@@ -295,7 +350,7 @@ function updatePodium(podiumData) {
 }
 
 function updateFastestLap(fastestLapData) {
-    const fastestLapBox = d3.select('#fastest-lap-box');
+    const fastestLapBox = d3.select('#fastest-lap-content');
     
     fastestLapBox
         .transition()
@@ -304,11 +359,11 @@ function updateFastestLap(fastestLapData) {
         .on('end', function () {
             if (fastestLapData) {
                 fastestLapBox.html(`
-                    <strong>Fastest Lap</strong> - ${fastestLapData.driverName} - ${fastestLapData.constructorName} - ${fastestLapData.time} - ${fastestLapData.lap} - Tyre Age: ${fastestLapData.tyreAge}
+                    <strong>Fastest Lap</strong> - ${fastestLapData.driverName} - ${fastestLapData.constructorName} - ${fastestLapData.time} - Lap ${fastestLapData.lap} - Tyre Age: ${fastestLapData.tyreAge}
                 `);
             } else {
                 fastestLapBox.html(`
-                    <strong>Fastest Lap</strong> Unknown fastest lap during this race.
+                    <strong>Fastest Lap</strong> - Unknown fastest lap for this race.
                 `);
             }
             fastestLapBox
@@ -316,4 +371,84 @@ function updateFastestLap(fastestLapData) {
                 .duration(300)
                 .style('opacity', 1);
         });
+}
+
+function updateStartingGrid(grid) {
+    const tbody = d3.select('#grid tbody');
+    tbody.selectAll('tr').remove();
+
+    if (grid.length === 0) {
+        tbody.append('tr').append('td')
+            .attr('colspan', 3)
+            .style('text-align', 'center')
+            .style('color', '#fff')
+            .text('Starting grid unavailable for this race');
+    } else {
+        grid.forEach(row => {
+            const driverDisplay = row.driverCode === '\\N' ? row.forename : row.driverCode;
+
+            const tr = tbody.append('tr');
+            tr.append('td').text(row.position);
+            tr.append('td')
+                .attr('title', `${row.driverFullName} - ${row.constructorName}`)
+                .html(`
+                    ${driverDisplay}
+                    <img src="images/team_logos/${row.constructorId}.png"
+                         alt="${row.constructorName}"
+                         class="team-logo-small" />
+                `);
+
+            tr.append('td').text(row.time);
+        });
+    }
+
+    d3.select('#grid-table')
+        .transition()
+        .duration(500)
+        .ease(d3.easeCubic)
+        .style('opacity', 1);
+}
+
+function determineBestTime(q1, q2, q3) {
+    if (q3 && q3 !== '\\N') return q3;
+    if (q2 && q2 !== '\\N') return q2;
+    if (q1 && q1 !== '\\N') return q1;
+    return 'No Time Set';
+}
+
+function updateFinishingGrid(grid) {
+    const tbody = d3.select('#finishing-grid tbody');
+    tbody.selectAll('tr').remove();
+
+    if (grid.length === 0) {
+        tbody.append('tr').append('td')
+            .attr('colspan', 3)
+            .style('text-align', 'center')
+            .style('color', '#fff')
+            .text('Unknown finishing grid during this race');
+    } else {
+        grid.forEach(row => {
+            const driverDisplay = row.driverCode === '\\N' ? row.forename : row.driverCode;
+
+            const tr = tbody.append('tr');
+            tr.append('td').text(row.position);
+
+            tr.append('td')
+                .attr('title', `${row.driverFullName} - ${row.constructorName}`)
+                .html(`
+                    ${driverDisplay}
+                    <img src="images/team_logos/${row.constructorId}.png"
+                         alt="${row.constructorName}"
+                         class="team-logo-small" />
+                `);
+
+            tr.append('td').text(row.time);
+        });
+    }
+
+    d3.select('#finishing-grid')
+        .transition()
+        .duration(500)
+        .ease(d3.easeCubic)
+        .style('opacity', 1);
 }

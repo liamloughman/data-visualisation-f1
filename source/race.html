@@ -23,7 +23,6 @@
     <main class="stats-content">
         <div id="Selectors"></div>
 
-        <!-- Podium Placeholder -->
         <section id="podium">
             <div class="podium-container">
                 <div class="podium-box" id="second-place">
@@ -38,37 +37,55 @@
             </div>
         </section>
 
-        <!-- Fastest Lap Time Placeholder -->
         <section id="fastest-lap">
             <div id="fastest-lap-box">
                 <div id="fastest-lap-content">Fastest Lap</div>
             </div>
         </section>
 
-        <!-- Starting Grid and Position Per Lap Chart -->
-        <section id="starting-grid">
-            <h2>Starting Grid</h2>
-            <table>
-                <tr><th>Position</th><th>Driver</th></tr>
-                <tr><td>1</td><td>Driver 1</td></tr>
-                <tr><td>2</td><td>Driver 2</td></tr>
-                <!-- Add more rows as needed -->
-            </table>
-            <aside id="position-per-lap">
-                <h3>Position Per Lap Chart</h3>
-                <div>Chart Placeholder</div>
-            </aside>
-        </section>
-
-        <!-- Finishing Grid Placeholder -->
-        <section id="finishing-grid">
-            <h2>Finishing Grid</h2>
-            <table>
-                <tr><th>Position</th><th>Driver</th><th>Time Interval to P1</th><th>Average Speed</th></tr>
-                <tr><td>1</td><td>Driver 1</td><td>0s</td><td>200 km/h</td></tr>
-                <tr><td>2</td><td>Driver 2</td><td>5s</td><td>198 km/h</td></tr>
-                <!-- Add more rows as needed -->
-            </table>
+        <section id="race-overview">
+            <div class="grid-container">
+                <!-- Starting Grid -->
+                <section id="grid-table">
+                    <h2>Starting Grid</h2>
+                    <table id="grid">
+                        <thead>
+                            <tr>
+                                <th>Position</th>
+                                <th>Driver</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rows will be populated dynamically -->
+                        </tbody>
+                    </table>
+                </section>
+        
+                <!-- Position Chart -->
+                <section id="position-chart">
+                    <h2>Position Evolution</h2>
+                    <div id="chart-container">
+                        <!-- Chart will be rendered here -->
+                    </div>
+                </section>
+        
+                <!-- Finishing Grid -->
+                <section id="finishing-grid">
+                    <h2>Finishing Grid</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Position</th>
+                                <th>Driver</th>
+                                <th>Interval</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </section>
+            </div>
         </section>
 
         <!-- Lap Chart Placeholder -->
