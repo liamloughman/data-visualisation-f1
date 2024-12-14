@@ -323,12 +323,18 @@ function getData(selectedRaceId) {
                     });
                 });
         });
+
+        const initialPositions = startingGrid.map((d) => ({
+            driverId: d.driverId,
+            lap: 0,
+            position: d.position
+        }));
         
         updatePodium(podiumData);
         updateFastestLap(fastestLapData);
         updateStartingGrid(startingGrid);
         updateFinishingGrid(finishingGrid);
-        updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid);
+        updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions);
 
     }).catch(console.error);
 }
@@ -503,7 +509,7 @@ function updateFinishingGrid(grid) {
         .style('opacity', 1);
 }
 
-function updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid) {
+function updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions) {
     d3.select('#chart-container').selectAll('*').remove();
 
     let chartHeight;
@@ -529,6 +535,8 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         return;
     }
 
+    const updatedPositionData = initialPositions.concat(positionData);
+
     const containerNode = chartContainer.node();
     const width = containerNode.getBoundingClientRect().width;
     const height = containerNode.getBoundingClientRect().height;
@@ -537,7 +545,7 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
     const topOffset = 25;
     const bottomOffset = 25;
     
-    const dataByDriver = d3.group(positionData, d => d.driverId);
+    const dataByDriver = d3.group(updatedPositionData, d => d.driverId);
     const driversWithData = dataByDriver.size;
     
     let qualifiedDrivers = 0;
@@ -553,17 +561,17 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
     const additionalOffset = missingDrivers > 0 ? missingDrivers * 30 : 0;
 
     const xScale = d3.scaleLinear()
-        .domain(d3.extent(positionData.map(d => d.lap)))
+        .domain(d3.extent(updatedPositionData.map(d => d.lap)))
         .range([margin.left, width - margin.right]);
 
-    const maxPosition = d3.max(positionData, d => d.position);
+    const maxPosition = d3.max(updatedPositionData, d => d.position);
 
     const yScale = d3.scaleLinear()
         .domain([1, maxPosition])
         .range([margin.top + topOffset, height - margin.bottom - bottomOffset - additionalOffset]);
 
     const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
-        .domain(positionData.map(d => d.driverId));
+        .domain(updatedPositionData.map(d => d.driverId));
 
     const svg = chartContainer
         .append('svg')
@@ -591,6 +599,8 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         .x(d => xScale(d.lap))
         .y(d => yScale(d.position));
 
+    console.log(dataByDriver)
+
     for (const [driverId, lapsData] of dataByDriver.entries()) {
         lapsData.sort((a, b) => a.lap - b.lap);
 
@@ -602,16 +612,35 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
                 .attr('fill', 'none')
                 .attr('stroke', color)
                 .attr('stroke-width', 2)
-                .attr('d', line);
+                .attr('d', line)
+                .attr('class', `driver-line driver-line-${driverId}`) 
+                .on('mouseover', function() {
+                    d3.selectAll('.driver-line')
+                        .style('opacity', 0.3);
+                    d3.selectAll('.driver-circle')
+                        .style('opacity', 0.3);
+                    d3.selectAll(`.driver-line-${driverId}`)
+                        .style('opacity', 1) ;
+                    d3.selectAll(`.driver-circle-${driverId}`)
+                        .style('opacity', 1); 
+                })
+                .on('mouseout', function() {
+                    d3.selectAll('.driver-line')
+                        .style('opacity', 1);
+                    d3.selectAll('.driver-circle')
+                        .style('opacity', 1);
+                });
         }
         
         const lastData = lapsData[lapsData.length - 1];
 
         svg.append('circle')
-            .attr('cx', xScale(lastData.lap))
-            .attr('cy', yScale(lastData.position))
-            .attr('r', 4)
-            .attr('fill', color);
+        .attr('cx', xScale(lastData.lap))
+        .attr('cy', yScale(lastData.position))
+        .attr('r', 4)
+        .attr('fill', color)
+        .attr('class', `driver-circle driver-circle-${driverId}`)
+        .style('opacity', 1);
 
         const driverLabel = driverCodeMap[driverId] !== 'N/A' 
             ? driverCodeMap[driverId] 
