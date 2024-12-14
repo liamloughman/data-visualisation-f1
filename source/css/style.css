@@ -271,3 +271,50 @@ button {
   margin-left: 5px;
   vertical-align: middle;
 }
+
+.standings-table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.standings-table th, .standings-table td {
+  font-size: 12px;
+  height: 30px;
+  line-height: 30px;
+  padding: 0px 10px;
+  text-align: center;
+  color: #fff;
+  background-color: #222;
+  white-space: nowrap;
+}
+
+.standings-table th {
+  background-color: #111;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+.standings-table tbody tr:nth-child(even) td {
+  background-color: #333;
+}
+
+.standings-table tbody tr:nth-child(odd) td {
+  background-color: #222;
+}
+
+.points-gain {
+  color: #00ff00; /* green increment */
+  font-weight: bold;
+}
+
+.standings-table th, .standings-table td {
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 5px;
+}
+
+.team-logo-small {
+  vertical-align: middle;
+}

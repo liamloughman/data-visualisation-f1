@@ -6,10 +6,11 @@
         <title>F1 Data Visualization</title>
         <link rel="stylesheet" href="css/style.css">
         <script src="js/d3.v7.min.js"></script>
+        <script src="js/topojson.min.js"></script>
         <script src="js/season.js" defer></script>
         <script>
             if (performance.getEntriesByType("navigation")[0].type === "reload") {
-            window.location.href = "index.html";
+                window.location.href = "index.html";
             }
         </script>
     </head>
@@ -21,7 +22,7 @@
         </header>
 
         <main class="stats-content">
-            <h1>Per Season F1 Stats</h1>
+            <h1>Season F1 Stats</h1>
             <div id="season-chart"></div>
         </main>
     </body>
