@@ -1,10 +1,9 @@
 let animationInProgress = false;
 let animationTimeouts = [];
-let previousPointsMap = new Map(); 
-let animatedLinePoints = []; 
-let previousLineLength = 0; 
+let previousPointsMap = new Map();
+let animatedLinePoints = [];
+let previousLineLength = 0;
 
-// Global variables for the contribution chart
 let contributionSvg, contributionChartG, contributionXAxisG, contributionYAxisG;
 let contributionX, contributionY;
 let contributionWidth = 700, contributionHeight = 300;
@@ -13,24 +12,27 @@ let contributionInnerWidth = contributionWidth - contributionMargin.left - contr
 let contributionInnerHeight = contributionHeight - contributionMargin.top - contributionMargin.bottom;
 let contributionInitialized = false;
 
-// Store a stable order of constructors and drivers for the chart
-let stableConstructorsOrder = []; // final season top5 constructorNames
-let stableDriversKeys = []; // final top5 teams drivers
-let finalMaxPoints = null; // final maximum points (for fixed x-axis domain)
+let stableConstructorsOrder = [];
+let stableDriversKeys = [];
+let finalMaxPoints = null;
+let driverLegendMap = {};
 
-// We will create a large color palette to ensure uniqueness
-// Concatenate multiple schemes:
+let driverConsistencySvg, driverConsistencyX, driverConsistencyY;
+let driverConsistencyWidth = 700, driverConsistencyHeight = 300;
+let driverConsistencyMargin = {top:70, right:20, bottom:50, left:60};
+let driverConsistencyInnerWidth = driverConsistencyWidth - driverConsistencyMargin.left - driverConsistencyMargin.right;
+let driverConsistencyInnerHeight = driverConsistencyHeight - driverConsistencyMargin.top - driverConsistencyMargin.bottom;
+let driverConsistencyInitialized = false;
+let driverConsistencyData = [];
+let driverColorMap = {};
+let driverConsistencyLinesGroup;
+
+let currentMaxRound = 0;
+let previousLineLengths = new Map();
+
 const bigColorPalette = [
-    ...d3.schemeTableau10,
-    ...d3.schemeSet2,
-    ...d3.schemeSet3,
-    ...d3.schemePaired,
-    ...d3.schemePastel1,
-    ...d3.schemePastel2,
-    ...d3.schemeDark2,
-    ...d3.schemeAccent
+    ...d3.schemeCategory10
 ].flat();
-// Remove duplicates if any (unlikely, but safe)
 const uniqueColorPalette = Array.from(new Set(bigColorPalette));
 
 async function main() {
@@ -50,7 +52,7 @@ async function main() {
         animationTimeouts = [];
     }
 
-    // Convert numeric fields
+    // Data conversions
     circuits.forEach(d => { d.circuitId = +d.circuitId; d.lat = +d.lat; d.lng = +d.lng; });
     races.forEach(d => { d.raceId = +d.raceId; d.year = +d.year; d.round = +d.round; d.circuitId = +d.circuitId; });
     drivers.forEach(d => d.driverId = +d.driverId);
@@ -102,43 +104,66 @@ async function main() {
         .attr('value', d => d)
         .text(d => d);
 
-    let selectedYear = seasons[0];
+    let selectedYear = seasons.includes(2023) ? 2023 : seasons[0];
+    seasonSelector.property('value', selectedYear);
+
     seasonSelector.on('change', function() {
         selectedYear = +this.value;
         previousPointsMap.clear();
         stableConstructorsOrder = [];
         stableDriversKeys = [];
         finalMaxPoints = null;
+        driverLegendMap = {};
+        driverConsistencyData = [];
+        previousLineLengths.clear();
         createStandingsTable(constructorDiv, 'Constructors');
         createStandingsTable(driverDiv, 'Drivers');
         updateSeason(selectedYear, true);
     });
 
-    const container = mainContainer.append('div')
+    const topRow = mainContainer.append('div')
+        .attr('class','top-row-container')
+        .style('display','flex')
+        .style('flex-direction','row')
+        .style('align-items','flex-start')
+        .style('justify-content','center')
+        .style('gap','20px');
+
+    const constructorDiv = topRow.append('div')
+        .attr('id','constructor-standings-container')
+        .style('flex','0 0 300px');
+
+    const mapDiv = topRow.append('div')
+        .attr('id','map-container')
+        .style('position','relative')
+        .style('opacity',0);
+
+    const driverDiv = topRow.append('div')
+        .attr('id','driver-standings-container')
+        .style('flex','0 0 300px');
+
+    const legendContainer = mainContainer.append('div')
+        .attr('id','legend-container')
+        .style('width','600px')
+        .style('margin','20px auto')
+        .style('text-align','center');
+
+    const bottomRow = mainContainer.append('div')
+        .attr('class','bottom-row-container')
         .style('display','flex')
         .style('flex-direction','row')
         .style('align-items','flex-start')
         .style('justify-content','center')
         .style('gap','20px')
-        .style('color','#fff');
+        .style('margin-top','20px');
 
-    const constructorDiv = container.append('div')
-        .attr('id','constructor-standings-container')
-        .style('flex','0 0 300px');
+    const driverConsistencyContainer = bottomRow.append('div')
+        .attr('id','driver-consistency-container')
+        .style('width','700px');
 
-    const mapDiv = container.append('div')
-        .attr('id','map-container')
-        .style('position','relative')
-        .style('opacity',0);
-
-    const driverDiv = container.append('div')
-        .attr('id','driver-standings-container')
-        .style('flex','0 0 300px');
-
-    const contributionContainer = mainContainer.append('div')
+    const contributionContainer = bottomRow.append('div')
         .attr('id','contribution-container')
-        .style('width','700px')
-        .style('margin','20px auto');
+        .style('width','700px');
 
     const buttonContainer = mainContainer.append('div')
         .attr('class','button-container')
@@ -202,12 +227,20 @@ async function main() {
 
     createStandingsTable(constructorDiv,'Constructors');
     createStandingsTable(driverDiv,'Drivers');
+
     updateSeason(selectedYear,true);
 
     function toggleAnimation() {
         if(!animationInProgress){
             animationInProgress=true;
             animateButton.text('Stop Animation');
+
+            // Reset lines to no progress if data available
+            if(driverConsistencyData.length > 0) {
+                previousLineLengths.clear();
+                currentMaxRound=0;
+                updateDriverConsistencyChart(currentMaxRound, false);
+            }
             startAnimation(selectedYear);
         }else{
             stopAnimation(selectedYear);
@@ -215,6 +248,14 @@ async function main() {
     }
 
     function startAnimation(selectedYear){
+        if(driverConsistencyData.length===0) {
+            // No data for animation
+            showMessage("No data available for animation for this season.");
+            animationInProgress=false;
+            animateButton.text('Show Season Evolution');
+            return;
+        }
+
         clearAllAnimationTimeouts();
         animatedLinePoints=[];
         animatedLine.remove();
@@ -222,8 +263,14 @@ async function main() {
         previousLineLength=0;
 
         const seasonRaces=races.filter(r=>r.year===selectedYear).sort((a,b)=>a.round-b.round);
-        const raceIds=seasonRaces.map(r=>r.raceId);
+        if(seasonRaces.length===0){
+            showMessage("No races found for the selected year.");
+            animationInProgress=false;
+            animateButton.text('Show Season Evolution');
+            return;
+        }
 
+        const raceIds=seasonRaces.map(r=>r.raceId);
         const yearDriverStandings=driverStandings.filter(d=>raceIds.includes(d.raceId));
         const yearConstructorStandings=constructorStandings.filter(d=>raceIds.includes(d.raceId));
         const yearResults=results.filter(d=>raceIds.includes(d.raceId));
@@ -232,14 +279,23 @@ async function main() {
             const currentRaceId=race.raceId;
             const driversUpToRace=yearDriverStandings.filter(d=>d.raceId<=currentRaceId);
             const constructorsUpToRace=yearConstructorStandings.filter(c=>c.raceId<=currentRaceId);
+            const finalDriverStandings=getFinalDriverStandings(driversUpToRace, yearResults.filter(rr=>rr.raceId<=currentRaceId));
             return {
                 raceId:currentRaceId,
                 raceName:race.name,
-                driverStandings:getFinalDriverStandings(driversUpToRace, yearResults.filter(rr=>rr.raceId<=currentRaceId)),
+                driverStandings:finalDriverStandings,
                 constructorStandings:getFinalConstructorStandings(constructorsUpToRace),
-                circuitId:race.circuitId
+                circuitId:race.circuitId,
+                round: race.round
             };
         });
+
+        if(snapshots.length===0) {
+            showMessage("No complete snapshots available for animation.");
+            animationInProgress=false;
+            animateButton.text('Show Season Evolution');
+            return;
+        }
 
         let index=0;
         step();
@@ -260,10 +316,13 @@ async function main() {
                 .attr('r',dd=>dd.raceId===snapshot.raceId?8:5)
                 .style('opacity',dd=>dd.raceId===snapshot.raceId?1:0.8);
 
-            updateStandingsRows(constructorDiv,snapshot.constructorStandings,'constructorName',true);
-            updateStandingsRows(driverDiv,snapshot.driverStandings,'driverName',true);
-
-            updateConstructorContributionChart(snapshot.driverStandings,snapshot.constructorStandings);
+            if(snapshot.constructorStandings && snapshot.constructorStandings.length>0) {
+                updateStandingsRows(constructorDiv,snapshot.constructorStandings,'constructorName',true);
+            }
+            if(snapshot.driverStandings && snapshot.driverStandings.length>0) {
+                updateStandingsRows(driverDiv,snapshot.driverStandings,'driverName',true);
+                updateConstructorContributionChart(snapshot.driverStandings,snapshot.constructorStandings);
+            }
 
             if(c){
                 animatedLinePoints.push({lat:c.lat,lng:c.lng});
@@ -301,6 +360,9 @@ async function main() {
                   });
             }
 
+            currentMaxRound = snapshot.round;
+            updateDriverConsistencyChart(currentMaxRound); 
+
             const t=setTimeout(step,2500);
             animationTimeouts.push(t);
             index++;
@@ -323,14 +385,23 @@ async function main() {
         previousLineLength=0;
 
         const seasonRaces=races.filter(r=>r.year===selectedYear).sort((a,b)=>a.round-b.round);
-        const raceIds=seasonRaces.map(r=>r.raceId);
+        if(seasonRaces.length===0){
+            showMessage("No races found for the selected year.");
+            return;
+        }
 
+        const raceIds=seasonRaces.map(r=>r.raceId);
         const yearDriverStandings=driverStandings.filter(d=>raceIds.includes(d.raceId));
         const yearConstructorStandings=constructorStandings.filter(d=>raceIds.includes(d.raceId));
         const yearResults=results.filter(d=>raceIds.includes(d.raceId));
 
         const finalDriverStandings=getFinalDriverStandings(yearDriverStandings,yearResults);
         const finalConstructorStandings=getFinalConstructorStandings(yearConstructorStandings);
+
+        if(!finalDriverStandings || finalDriverStandings.length===0){
+            showMessage("Insufficient driver data for this season.");
+            return;
+        }
 
         const seasonCircuits=seasonRaces.map(r=>{
             const c=circuits.find(ci=>ci.circuitId===+r.circuitId);
@@ -362,39 +433,68 @@ async function main() {
         positionMarkers(gMarkers,projection,seasonCircuits);
         enterCircles.transition().delay(500).duration(500).style('opacity',0.8);
 
-        updateStandingsRows(constructorDiv,finalConstructorStandings,'constructorName',true);
-        updateStandingsRows(driverDiv,finalDriverStandings,'driverName',true);
+        if(finalConstructorStandings && finalConstructorStandings.length>0)
+            updateStandingsRows(constructorDiv,finalConstructorStandings,'constructorName',true);
+        if(finalDriverStandings && finalDriverStandings.length>0)
+            updateStandingsRows(driverDiv,finalDriverStandings,'driverName',true);
 
         mapDiv.transition().duration(500).style('opacity',1);
 
-        // Set stable order of constructors and drivers once
-        if(stableConstructorsOrder.length === 0) {
-            stableConstructorsOrder = finalConstructorStandings.slice(0,5).map(d => d.constructorName);
+        stableConstructorsOrder = finalConstructorStandings.slice(0,5).map(d => d.constructorName);
 
-            // Gather all drivers from final top 5 teams
-            const top5Constructors = finalConstructorStandings.slice(0,5);
-            const allDriversInTop5 = finalDriverStandings.filter(d=>top5Constructors.find(c=>c.constructorId===d.constructorId));
-            const driverNamesSet = new Set();
-            allDriversInTop5.forEach(d=>{
-                const name = getDriverDisplayName(d.driverId, d.driverName);
-                driverNamesSet.add(name);
-            });
-            stableDriversKeys = Array.from(driverNamesSet);
+        const top5Constructors = finalConstructorStandings.slice(0,5);
+        const allDriversInTop5 = finalDriverStandings.filter(d=>top5Constructors.find(c=>c.constructorId===d.constructorId));
+        const driverNamesSet = new Set();
+        driverLegendMap = {};
 
-            // Determine finalMaxPoints for fixed x-axis:
-            // sum across top5Constructors their max total and find max
-            const stackedData = getStackedData(finalDriverStandings, finalConstructorStandings);
-            finalMaxPoints = d3.max(stackedData,d=>d3.sum(stableDriversKeys,k=>d[k]))||0;
+        allDriversInTop5.forEach(d=>{
+            const displayName = getDriverDisplayName(d.driverId, d.driverName);
+            driverNamesSet.add(displayName);
 
-            // Initialize chart if not done
-            if (!contributionInitialized) {
-                initializeConstructorContributionChart();
+            const code = driverCodeMap.get(d.driverId);
+            const hasCode = code && code.toUpperCase()!=='N/A' && code!=='\\N';
+            if (hasCode) {
+                driverLegendMap[displayName] = {
+                    line1: displayName,
+                    line2: null
+                };
+            } else {
+                driverLegendMap[displayName] = {
+                    line1: displayName,
+                    line2: d.driverName
+                };
             }
+        });
 
-            // Once stable sets are known, we won't change them for this season
+        stableDriversKeys = Array.from(driverNamesSet);
+
+        const stackedData = getStackedData(finalDriverStandings, finalConstructorStandings);
+        finalMaxPoints = d3.max(stackedData,d=>d3.sum(stableDriversKeys,k=>d[k]))||0;
+
+        initializeConstructorContributionChart();
+        updateConstructorContributionChart(finalDriverStandings,finalConstructorStandings);
+
+        const top10 = finalDriverStandings.slice(0,10);
+        if(top10.length===0) {
+            showMessage("Not enough driver data (top 10 drivers not found) for display.");
+            return;
         }
 
-        updateConstructorContributionChart(finalDriverStandings,finalConstructorStandings);
+        initializeDriverConsistency(top10, seasonRaces);
+
+        const raceSnapshots = computeRaceSnapshots(seasonRaces, yearDriverStandings, yearResults, constructorStandings);
+        if(raceSnapshots.length===0) {
+            showMessage("No race snapshots available for consistency chart.");
+            return;
+        }
+
+        populateDriverConsistencyData(top10, raceSnapshots);
+
+        currentMaxRound = d3.max(seasonRaces, d=>d.round);
+        previousLineLengths.clear();
+        updateDriverConsistencyChart(currentMaxRound, false); 
+
+        updateLegend();
     }
 
     function positionMarkers(g,projection,data){
@@ -428,6 +528,8 @@ async function main() {
     }
 
     function updateStandingsRows(container,data,nameKey,showLogos){
+        if(!data || data.length===0) return;
+
         data=data.sort((a,b)=>d3.descending(a.points,b.points)).slice(0,10);
 
         const oldPointsMap=new Map();
@@ -499,7 +601,7 @@ async function main() {
                     dy=oldPos.top-newPos.top;
                 }
 
-                const finalPoints=d.points; 
+                const finalPoints=d.points;
                 const oldVal=d._oldVal;
                 const diff=d._diff;
 
@@ -531,6 +633,7 @@ async function main() {
     }
 
     function getFinalDriverStandings(standings,resultsData){
+        if(!standings || standings.length===0) return [];
         const driverPointsByDriver=d3.rollup(standings,v=>d3.max(v,dd=>dd.points),dd=>dd.driverId);
         const driverConstructorMap=new Map();
         for(const [driverId]of driverPointsByDriver){
@@ -542,7 +645,7 @@ async function main() {
             }
         }
         return Array.from(driverPointsByDriver,([driverId,points])=>({
-            driverId, 
+            driverId,
             driverName:driverNameMap.get(driverId)||'Unknown',
             constructorId:driverConstructorMap.get(driverId),
             points
@@ -550,6 +653,7 @@ async function main() {
     }
 
     function getFinalConstructorStandings(standings){
+        if(!standings || standings.length===0) return [];
         const constructorPointsByConstructor=d3.rollup(
             standings,v=>d3.max(v,dd=>dd.points),dd=>dd.constructorId
         );
@@ -582,20 +686,20 @@ async function main() {
         contributionX = d3.scaleLinear().range([0,contributionInnerWidth]);
         contributionY = d3.scaleBand().range([0,contributionInnerHeight]).padding(0.1);
 
-        contributionXAxisG = contributionChartG.append('g')
-            .attr('class','x-axis')
-            .attr('transform',`translate(0,${contributionInnerHeight})`);
-
-        contributionYAxisG = contributionChartG.append('g')
-            .attr('class','y-axis');
-
-        // Set final domain for X-axis once finalMaxPoints is known
         if (finalMaxPoints !== null) {
             contributionX.domain([0, finalMaxPoints]);
         }
         if (stableConstructorsOrder.length > 0) {
             contributionY.domain(stableConstructorsOrder);
         }
+
+        contributionXAxisG = contributionChartG.append('g')
+            .attr('class','x-axis')
+            .attr('transform',`translate(0,${contributionInnerHeight})`);
+
+        contributionYAxisG = contributionChartG.append('g')
+            .attr('class','y-axis');
+        contributionInitialized = true;
     }
 
     function getDriverDisplayName(driverId, fallbackName) {
@@ -608,8 +712,10 @@ async function main() {
     }
 
     function getStackedData(finalDriverStandings, finalConstructorStandings){
-        // Creates the stacked data for final state
-        const top5Constructors = stableConstructorsOrder.map(cName => finalConstructorStandings.find(x=>x.constructorName===cName));
+        if(!finalDriverStandings || !finalConstructorStandings || 
+           finalDriverStandings.length===0 || finalConstructorStandings.length===0) return [];
+        const top5Constructors = stableConstructorsOrder.map(cName => finalConstructorStandings.find(x=>x.constructorName===cName)).filter(x=>x);
+        if(top5Constructors.length===0) return [];
         const constructorToDrivers={};
         top5Constructors.forEach(con=>{
             const driversForConstructor=finalDriverStandings.filter(dd=>dd.constructorId===con.constructorId);
@@ -626,7 +732,8 @@ async function main() {
         const stackedData=top5Constructors.map(con=>{
             const obj={constructorName:con.constructorName};
             stableDriversKeys.forEach(dName=>{
-                const drv=constructorToDrivers[con.constructorId].find(x=>x.driverName===dName);
+                const arr=constructorToDrivers[con.constructorId]||[];
+                const drv=arr.find(x=>x.driverName===dName);
                 obj[dName]=drv?drv.points:0;
             });
             return obj;
@@ -641,22 +748,17 @@ async function main() {
         }
 
         if (stableConstructorsOrder.length === 0 || stableDriversKeys.length === 0 || finalMaxPoints === null) {
-            // final sets not ready yet
             return;
         }
 
-        const top5Constructors = stableConstructorsOrder.map(cName => finalConstructorStandings.find(x=>x.constructorName===cName));
         const stackedData = getStackedData(finalDriverStandings, finalConstructorStandings);
+        if(stackedData.length===0) return;
+
         const stack=d3.stack().keys(stableDriversKeys);
         const stackedSeries=stack(stackedData);
 
-        // X-axis remains fixed, do not recalculate domain
-        // Y-axis also fixed
-
         const xAxis=d3.axisBottom(contributionX).ticks(5).tickSizeOuter(0).tickPadding(5);
         const yAxis=d3.axisLeft(contributionY).tickSizeOuter(0).tickPadding(5);
-
-        // No domain change for X and Y here, they are stable
 
         contributionXAxisG.call(xAxis)
             .selectAll('text').attr('fill','#fff');
@@ -675,14 +777,12 @@ async function main() {
 
         const mergedGroups=groupsEnter.merge(groups);
 
-        // Assign a unique color per driverKey from stableDriversKeys
-        // Create a dictionary: driverName->color from bigColorPalette:
-        const driverColorMap = {};
+        const localDriverColorMap = {};
         stableDriversKeys.forEach((dName,i)=>{
-            driverColorMap[dName] = uniqueColorPalette[i % uniqueColorPalette.length];
+            localDriverColorMap[dName] = uniqueColorPalette[i % uniqueColorPalette.length];
         });
 
-        mergedGroups.attr('fill', series=>driverColorMap[series.key]);
+        mergedGroups.attr('fill', series=>localDriverColorMap[series.key]);
 
         const rects=mergedGroups.selectAll('rect')
             .data(d=>d, d=>d.data.constructorName);
@@ -693,53 +793,226 @@ async function main() {
             .attr('y', seg => contributionY(seg.data.constructorName))
             .attr('x', seg => contributionX(seg[0]))
             .attr('height', contributionY.bandwidth())
-            .attr('width', seg=>contributionX(seg[1])-contributionX(seg[0]))
+            .attr('width',0)
             .style('opacity',1);
 
         const allRects=rectEnter.merge(rects);
 
-        allRects.transition().duration(1000).ease(d3.easeCubic)
+        allRects
+            .transition().duration(1500).ease(d3.easeCubic)
             .attr('x', seg => contributionX(seg[0]))
-            .attr('width', seg => contributionX(seg[1]) - contributionX(seg[0]))
+            .attr('width', seg => (contributionX(seg[1]) - contributionX(seg[0])))
             .attr('y', seg => contributionY(seg.data.constructorName))
             .attr('height', contributionY.bandwidth())
             .style('opacity',1);
+    }
 
-        // Legend is fixed from stableDriversKeys
-        const legendG = contributionSvg.selectAll('.legend-group').data([null]);
-        const legendGEnter = legendG.enter().append('g')
-            .attr('class','legend-group')
-            .style('font-size','10px');
+    function initializeDriverConsistency(top10Drivers, seasonRaces){
+        const container = d3.select('#driver-consistency-container');
+        container.selectAll('*').remove();
 
-        const legendUpdate = legendGEnter.merge(legendG);
-
-        const legendItems = legendUpdate.selectAll('.legend-item')
-            .data(stableDriversKeys, d => d);
-
-        legendItems.exit().remove();
-
-        const legendItemsEnter = legendItems.enter().append('g')
-            .attr('class','legend-item');
-
-        legendItemsEnter.append('rect')
-            .attr('width',12)
-            .attr('height',12)
-            .attr('y',-12);
-
-        legendItemsEnter.append('text')
-            .attr('x',15)
-            .attr('y',-2)
-            .style('fill','#fff')
+        container.append('h2')
+            .text("Driver Consistency Tracker")
+            .style('text-align','center')
+            .style('color','#ee2a26')
             .style('font-family','Formula1');
 
-        const allLegendItems = legendItemsEnter.merge(legendItems)
-            .attr('transform',(dd,i)=>`translate(${i*60},0)`);
+        driverConsistencySvg = container.append('svg')
+            .attr('width', driverConsistencyWidth)
+            .attr('height', driverConsistencyHeight)
+            .style('background','#222')
+            .style('border-radius','8px');
 
-        allLegendItems.select('rect').attr('fill',dd=>driverColorMap[dd]);
-        allLegendItems.select('text').text(dd=>dd);
+        driverConsistencyData = top10Drivers.map((d,i)=>({
+            driverId: d.driverId,
+            driverName: d.driverName,
+            positions: []
+        }));
 
-        const totalLegendWidth=stableDriversKeys.length*60;
-        legendUpdate
-            .attr('transform',`translate(${(contributionWidth - totalLegendWidth)/2},${contributionMargin.top-20})`);
+        driverColorMap = {};
+        top10Drivers.forEach((d,i)=>{
+            driverColorMap[d.driverId] = uniqueColorPalette[i % uniqueColorPalette.length];
+        });
+
+        const rounds = seasonRaces.map(r=>r.round);
+        if(rounds.length===0) return;
+
+        driverConsistencyY = d3.scaleLinear().domain([0.5,10.5]).range([driverConsistencyMargin.top, driverConsistencyHeight - driverConsistencyMargin.bottom]);
+        driverConsistencyX = d3.scaleLinear().domain(d3.extent(rounds)).range([driverConsistencyMargin.left, driverConsistencyWidth - driverConsistencyMargin.right]);
+
+        const xAxis = d3.axisBottom(driverConsistencyX).tickFormat(d3.format('d'));
+        const yAxis = d3.axisLeft(driverConsistencyY);
+
+        driverConsistencySvg.append('g')
+            .attr('transform',`translate(0,${driverConsistencyHeight - driverConsistencyMargin.bottom})`)
+            .call(xAxis)
+            .call(g=>g.selectAll('text').attr('fill','#fff'))
+            .call(g=>g.selectAll('line').attr('stroke','#fff'))
+            .call(g=>g.selectAll('path').attr('stroke','#fff'));
+
+        driverConsistencySvg.append('g')
+            .attr('transform',`translate(${driverConsistencyMargin.left},0)`)
+            .call(yAxis)
+            .call(g => g.selectAll('text').attr('fill','#fff'))
+            .call(g => g.selectAll('line').attr('stroke','#fff'))
+            .call(g => g.selectAll('path').attr('stroke','#fff'));
+
+        driverConsistencySvg.append('defs')
+            .append('clipPath')
+            .attr('id','driver-clip')
+            .append('rect')
+            .attr('x', driverConsistencyMargin.left)
+            .attr('y', driverConsistencyMargin.top)
+            .attr('width', driverConsistencyInnerWidth)
+            .attr('height', driverConsistencyInnerHeight);
+
+        driverConsistencyLinesGroup = driverConsistencySvg.append('g')
+            .attr('class','consistency-lines-group')
+            .attr('clip-path','url(#driver-clip)');
+
+        driverConsistencyInitialized = true;
+    }
+
+    function computeRaceSnapshots(seasonRaces, yearDriverStandings, yearResults, constructorStandings){
+        return seasonRaces.map(race=>{
+            const currentRaceId=race.raceId;
+            const driversUpToRace=yearDriverStandings.filter(d=>d.raceId<=currentRaceId);
+            const raceFilteredResults = yearResults.filter(rr=>rr.raceId<=currentRaceId);
+            const finalDS=getFinalDriverStandings(driversUpToRace, raceFilteredResults);
+            return {
+                round: race.round,
+                driverStandings: finalDS
+            };
+        });
+    }
+
+    function populateDriverConsistencyData(top10Drivers, raceSnapshots){
+        const top10Ids = top10Drivers.map(d=>d.driverId);
+        raceSnapshots.forEach(snap=>{
+            snap.driverStandings.forEach((dr, idx)=>{
+                if(top10Ids.includes(dr.driverId)){
+                    const lineData = driverConsistencyData.find(x=>x.driverId===dr.driverId);
+                    lineData.positions.push({round:snap.round, position: idx+1});
+                }
+            });
+        });
+    }
+
+    function updateDriverConsistencyChart(maxRound = currentMaxRound, animate = true){
+        if(!driverConsistencyInitialized || driverConsistencyData.length===0) return;
+        const line = d3.line()
+            .x(d => driverConsistencyX(d.round))
+            .y(d => driverConsistencyY(d.position));
+
+        const lines = driverConsistencyLinesGroup.selectAll('.consistency-line')
+            .data(driverConsistencyData, d=>d.driverId);
+
+        lines.exit().remove();
+
+        const enter = lines.enter()
+            .append('path')
+            .attr('class','consistency-line')
+            .attr('fill','none')
+            .attr('stroke-width',2);
+
+        const allLines = enter.merge(lines)
+            .attr('stroke',d=>driverColorMap[d.driverId]);
+
+        allLines.each(function(d){
+            const filteredPositions = d.positions.filter(p=>p.round <= maxRound);
+            if(filteredPositions.length < 2) {
+                d3.select(this).attr('d', null);
+                return;
+            }
+
+            const pathStr = line(filteredPositions);
+            const pathEl = this;
+            d3.select(pathEl).attr('d', pathStr);
+
+            const totalLength = pathEl.getTotalLength();
+            const oldLength = previousLineLengths.get(d.driverId) || 0;
+
+            if(!animate) {
+                // Show full line instantly
+                d3.select(pathEl)
+                    .attr('stroke-dasharray', null)
+                    .attr('stroke-dashoffset', null);
+                previousLineLengths.set(d.driverId, totalLength);
+            } else {
+                // Animate newly added segment only
+                d3.select(pathEl)
+                    .attr('stroke-dasharray', totalLength + ' ' + totalLength)
+                    .attr('stroke-dashoffset', totalLength - oldLength)
+                    .transition().duration(1000).ease(d3.easeCubic)
+                    .attr('stroke-dashoffset',0)
+                    .on('end',()=>{
+                        previousLineLengths.set(d.driverId, totalLength);
+                    });
+            }
+        });
+    }
+
+    function updateLegend(){
+        const container = d3.select('#legend-container');
+        container.selectAll('*').remove();
+
+        if(stableDriversKeys.length===0) return;
+
+        container.append('h2')
+            .text('Driver Legend')
+            .style('color','#ee2a26')
+            .style('font-family','Formula1');
+
+        const legendG = container.append('div')
+            .style('display','flex')
+            .style('flex-wrap','wrap')
+            .style('justify-content','center')
+            .style('gap','15px');
+
+        const allDrivers = stableDriversKeys;
+        const colorMapForLegend = {};
+        allDrivers.forEach((dName,i)=>{
+            const idx = i % uniqueColorPalette.length;
+            colorMapForLegend[dName] = uniqueColorPalette[idx];
+        });
+
+        const legendItems = legendG.selectAll('.legend-item')
+            .data(allDrivers, d=>d)
+            .enter().append('div')
+            .attr('class','legend-item')
+            .style('display','flex')
+            .style('flex-direction','column')
+            .style('align-items','center')
+            .style('gap','5px');
+
+        legendItems.append('div')
+            .style('width','12px')
+            .style('height','12px')
+            .style('background',d=>colorMapForLegend[d]);
+
+        legendItems.append('div')
+            .style('color','#fff')
+            .style('font-family','Formula1')
+            .style('font-size','12px')
+            .html(d=>{
+                const legendInfo = driverLegendMap[d];
+                if(!legendInfo) return d;
+                if(legendInfo.line2===null) {
+                    return `<span>${legendInfo.line1}</span>`;
+                } else {
+                    return `<span>${legendInfo.line1}<br>${legendInfo.line2}</span>`;
+                }
+            });
+    }
+
+    function showMessage(msg) {
+        const container = d3.select('#season-chart');
+        container.selectAll('*').remove();
+        container.append('div')
+            .style('color','#fff')
+            .style('text-align','center')
+            .style('margin-top','20px')
+            .style('font-family','Formula1')
+            .html(`<h2>${msg}</h2>`);
     }
 }
