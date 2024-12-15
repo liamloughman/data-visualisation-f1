@@ -329,12 +329,17 @@ function getData(selectedRaceId) {
             lap: 0,
             position: d.position
         }));
+
+        const driverConstructorMap = {};
+        resultsForRace.forEach(result => {
+            driverConstructorMap[result.driverId] = result.constructorId;
+        });
         
         updatePodium(podiumData);
         updateFastestLap(fastestLapData);
         updateStartingGrid(startingGrid);
         updateFinishingGrid(finishingGrid);
-        updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions);
+        updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions, driverConstructorMap);
 
     }).catch(console.error);
 }
@@ -346,47 +351,83 @@ function updatePodium(podiumData) {
         3: d3.select('#third-place'),
     };
 
-    podiumData.forEach(driver => {
-        const podiumBox = podiumBoxes[driver.position];
-        const teamLogoPath = `images/team_logos/${driver.constructorId}.png`;
-        const details = [driver.constructorName];
-        if (driver.driverCode !== '\\N') details.push(driver.driverCode);
-        if (driver.time !== '\\N') details.push(driver.time);
-        let content = podiumBox.select('.podium-content');
-    
-        if (content.empty()) {
-            content = podiumBox.append('div')
-                .attr('class', 'podium-content')
+    if (podiumData && podiumData.length > 0) {
+        podiumData.forEach(driver => {
+            const podiumBox = podiumBoxes[driver.position];
+            const teamLogoPath = `images/team_logos/${driver.constructorId}.png`;
+            const details = [driver.constructorName];
+            if (driver.driverCode !== '\\N') details.push(driver.driverCode);
+            if (driver.time !== '\\N') details.push(driver.time);
+            let content = podiumBox.select('.podium-content');
+        
+            if (content.empty()) {
+                content = podiumBox.append('div')
+                    .attr('class', 'podium-content')
+                    .style('opacity', 0)
+                    .style('display', 'flex')
+                    .style('flex-direction', 'row')
+                    .style('align-items', 'center')
+                    .style('gap', '10px');
+            }
+        
+            content.transition()
+                .duration(300)
                 .style('opacity', 0)
-                .style('display', 'flex')
-                .style('flex-direction', 'row')
-                .style('align-items', 'center')
-                .style('gap', '10px');
-        }
-    
-        content
+                .on('end', function () {
+                    content.html(`
+                        <img src="${teamLogoPath}" alt="${driver.constructorName} Logo" class="team-logo">
+                        <div class="text-content">
+                            <strong>P${driver.position} - ${driver.driverName}</strong><br>
+                            <span>${details.join(' - ')}</span>
+                        </div>
+                    `);
+                    
+                    content.select('.text-content')
+                        .style('display', 'flex')
+                        .style('flex-direction', 'column');
+        
+                    content.transition()
+                        .duration(300)
+                        .style('opacity', 1);
+                });
+        });
+    } else {
+        const firstContent = podiumBoxes[1].select('.podium-content');
+        firstContent
             .transition()
             .duration(300)
             .style('opacity', 0)
-            .on('end', function () {
-                content.html(`
-                    <img src="${teamLogoPath}" alt="${driver.constructorName} Logo" class="team-logo">
-                    <div class="text-content">
-                        <strong>P${driver.position} - ${driver.driverName}</strong><br>
-                        <span>${details.join(' - ')}</span>
-                    </div>
-                `);
-                
-                content.select('.text-content')
-                    .style('display', 'flex')
-                    .style('flex-direction', 'column');
-    
-                content
+            .on('end', function() {
+                d3.select(this).html('P1')
                     .transition()
                     .duration(300)
                     .style('opacity', 1);
             });
-    });
+    
+        const secondContent = podiumBoxes[2].select('.podium-content');
+        secondContent
+            .transition()
+            .duration(300)
+            .style('opacity', 0)
+            .on('end', function() {
+                d3.select(this).html('P2')
+                    .transition()
+                    .duration(300)
+                    .style('opacity', 1);
+            });
+    
+        const thirdContent = podiumBoxes[3].select('.podium-content');
+        thirdContent
+            .transition()
+            .duration(300)
+            .style('opacity', 0)
+            .on('end', function() {
+                d3.select(this).html('P3')
+                    .transition()
+                    .duration(300)
+                    .style('opacity', 1);
+            });
+    }
 }
 
 function updateFastestLap(fastestLapData) {
@@ -415,6 +456,7 @@ function updateFastestLap(fastestLapData) {
 
 function updateStartingGrid(grid) {
     const tbody = d3.select('#grid tbody');
+
     tbody.selectAll('tr').remove();
 
     if (grid.length === 0) {
@@ -427,10 +469,10 @@ function updateStartingGrid(grid) {
         grid.forEach(row => {
             const driverDisplay = row.driverCode === '\\N' ? row.forename : row.driverCode;
 
-            const tr = tbody.append('tr');
+            const tr = tbody.append('tr')
+                .style('opacity', 0);
             tr.append('td').text(row.position);
             tr.append('td')
-                .attr('title', `${row.driverFullName} - ${row.constructorName}`)
                 .style('text-align', 'left')
                 .html(`
                     ${driverDisplay}
@@ -439,8 +481,20 @@ function updateStartingGrid(grid) {
                          class="team-logo-small" />
                 `);
 
-            tr.append('td').text(row.time);
+            tr.append('td').text(row.time)
+            tr.on('mouseover', function(event) {
+                showTooltip(event, row.driverFullName, row.constructorName);
+            })
+            .on('mouseout', function() {
+                hideTooltip();
+            });
         });
+
+        const rows = tbody.selectAll('tr');
+        rows.transition()
+            .duration(300)
+            .delay((d, i) => i * 50)
+            .style('opacity', 1);
     }
 
     d3.select('#grid-table')
@@ -448,6 +502,32 @@ function updateStartingGrid(grid) {
         .duration(500)
         .ease(d3.easeCubic)
         .style('opacity', 1);
+
+    const tooltip = d3.select('body').append('div')
+        .attr('class', 'tooltip')
+        .style('position', 'absolute')
+        .style('background', '#333')
+        .style('color', '#fff')
+        .style('padding', '5px 10px')
+        .style('border-radius', '4px')
+        .style('pointer-events', 'none')
+        .style('opacity', 0)
+        .style('font-size', '12px');
+
+    function showTooltip(event, driverFullName, constructorName) {
+        tooltip.transition()
+            .duration(200)
+            .style('opacity', 0.9);
+        tooltip.html(`<strong>${driverFullName}</strong><br>Constructor: ${constructorName}`)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+    }
+
+    function hideTooltip() {
+        tooltip.transition()
+            .duration(500)
+            .style('opacity', 0);
+    }
 }
 
 function determineBestTime(q1, q2, q3) {
@@ -485,11 +565,11 @@ function updateFinishingGrid(grid) {
                 displayPosition = 'DNF';
             }
 
-            const tr = tbody.append('tr');
+            const tr = tbody.append('tr')
+                .style('opacity', 0);
             tr.append('td').text(displayPosition);
 
             tr.append('td')
-                .attr('title', `${row.driverFullName} - ${row.constructorName}`)
                 .style('text-align', 'left')
                 .html(`
                     ${driverDisplay}
@@ -498,8 +578,20 @@ function updateFinishingGrid(grid) {
                          class="team-logo-small" />
                 `);
 
-            tr.append('td').text(timeStr);
+            tr.append('td').text(timeStr)
+            tr.on('mouseover', function(event) {
+                showTooltip(event, row.driverFullName, row.constructorName);
+            })
+            .on('mouseout', function() {
+                hideTooltip();
+            });
         });
+
+        const rows = tbody.selectAll('tr');
+        rows.transition()
+            .duration(300)
+            .delay((d, i) => i * 50)
+            .style('opacity', 1);
     }
 
     d3.select('#finishing-grid')
@@ -507,9 +599,35 @@ function updateFinishingGrid(grid) {
         .duration(500)
         .ease(d3.easeCubic)
         .style('opacity', 1);
+
+    const tooltip = d3.select('body').append('div')
+        .attr('class', 'tooltip')
+        .style('position', 'absolute')
+        .style('background', '#333')
+        .style('color', '#fff')
+        .style('padding', '5px 10px')
+        .style('border-radius', '4px')
+        .style('pointer-events', 'none')
+        .style('opacity', 0)
+        .style('font-size', '12px');
+
+    function showTooltip(event, driverFullName, constructorName) {
+        tooltip.transition()
+            .duration(200)
+            .style('opacity', 0.9);
+        tooltip.html(`<strong>${driverFullName}</strong><br>Constructor: ${constructorName}`)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+    }
+
+    function hideTooltip() {
+        tooltip.transition()
+            .duration(500)
+            .style('opacity', 0);
+    }
 }
 
-function updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions) {
+function updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions, driverConstructorMap) {
     d3.select('#chart-container').selectAll('*').remove();
 
     let chartHeight;
@@ -528,9 +646,11 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         chartContainer.append('div')
             .style('color', '#fff')
             .text('No lap position data available for this race.');
+        
         d3.select('#position-chart')
             .transition()
             .duration(500)
+            .ease(d3.easeCubic)
             .style('opacity', 1);
         return;
     }
@@ -573,6 +693,8 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
     const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
         .domain(updatedPositionData.map(d => d.driverId));
 
+    d3.select('#position-chart').style('opacity', 0);
+
     const svg = chartContainer
         .append('svg')
         .attr('width', width)
@@ -599,64 +721,159 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         .x(d => xScale(d.lap))
         .y(d => yScale(d.position));
 
-    console.log(dataByDriver)
+    const linesGroup = svg.append('g').attr('class', 'lines-group');
+    const hoverGroup = svg.append('g').attr('class', 'hover-group');
 
     for (const [driverId, lapsData] of dataByDriver.entries()) {
         lapsData.sort((a, b) => a.lap - b.lap);
 
         const color = colorScale(driverId);
-        
+
+        let pathNode;
         if (lapsData.length > 1) {
-            svg.append('path')
+            const path = linesGroup.append('path')
                 .datum(lapsData)
                 .attr('fill', 'none')
                 .attr('stroke', color)
                 .attr('stroke-width', 2)
                 .attr('d', line)
-                .attr('class', `driver-line driver-line-${driverId}`) 
-                .on('mouseover', function() {
+                .attr('class', `driver-line driver-line-${driverId}`);
+
+            const lastData = lapsData[lapsData.length - 1];
+
+            svg.append('circle')
+                .attr('cx', xScale(lastData.lap))
+                .attr('cy', yScale(lastData.position))
+                .attr('r', 4)
+                .attr('fill', color)
+                .attr('class', `driver-circle driver-circle-${driverId}`)
+                .style('opacity', 1);
+    
+            svg.append('text')
+                .attr('x', xScale(lastData.lap) + 5)
+                .attr('y', yScale(lastData.position))
+                .attr('dy', '0.35em')
+                .attr('fill', '#fff')
+                .attr('font-size', '10px');
+
+            pathNode = path.node();
+            const totalLength = pathNode.getTotalLength();
+            path
+                .attr('stroke-dasharray', totalLength + ' ' + totalLength)
+                .attr('stroke-dashoffset', totalLength);
+
+            hoverGroup.append('path')
+                .datum(lapsData)
+                .attr('fill', 'none')
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', 10)
+                .attr('d', line)
+                .attr('class', `driver-hover driver-hover-${driverId}`)
+                .style('cursor', 'pointer')
+                .on('mouseover', function(event) {
                     d3.selectAll('.driver-line')
+                        .transition()
+                        .duration(200)
                         .style('opacity', 0.3);
+
                     d3.selectAll('.driver-circle')
+                        .transition()
+                        .duration(200)
                         .style('opacity', 0.3);
-                    d3.selectAll(`.driver-line-${driverId}`)
-                        .style('opacity', 1) ;
+
+                    d3.select(`.driver-line-${driverId}`)
+                        .transition()
+                        .duration(200)
+                        .style('opacity', 1)
+                        .attr('stroke-width', 4);
+
                     d3.selectAll(`.driver-circle-${driverId}`)
-                        .style('opacity', 1); 
+                        .transition()
+                        .duration(200)
+                        .style('opacity', 1)
+                        .attr('r', 8);
+                    
+                    showTooltip(event, driverId);
                 })
                 .on('mouseout', function() {
                     d3.selectAll('.driver-line')
-                        .style('opacity', 1);
+                        .transition()
+                        .duration(200)
+                        .style('opacity', 1)
+                        .attr('stroke-width', 2);
+
                     d3.selectAll('.driver-circle')
-                        .style('opacity', 1);
+                        .transition()
+                        .duration(200)
+                        .style('opacity', 1)
+                        .attr('r', 4);
+                    
+                    hideTooltip();
                 });
         }
-        
-        const lastData = lapsData[lapsData.length - 1];
-
-        svg.append('circle')
-        .attr('cx', xScale(lastData.lap))
-        .attr('cy', yScale(lastData.position))
-        .attr('r', 4)
-        .attr('fill', color)
-        .attr('class', `driver-circle driver-circle-${driverId}`)
-        .style('opacity', 1);
-
-        const driverLabel = driverCodeMap[driverId] !== 'N/A' 
-            ? driverCodeMap[driverId] 
-            : driverMap[driverId].split(' ')[0];
-
-        svg.append('text')
-            .attr('x', xScale(lastData.lap) + 5)
-            .attr('y', yScale(lastData.position))
-            .attr('dy', '0.35em')
-            .attr('fill', '#fff')
-            .attr('font-size', '10px');
     }
 
-    d3.select('#position-chart')
-        .transition()
-        .duration(500)
-        .ease(d3.easeCubic)
-        .style('opacity', 1);
+    const tooltip = d3.select('body').append('div')
+        .attr('class', 'tooltip')
+        .style('position', 'absolute')
+        .style('background', '#333')
+        .style('color', '#fff')
+        .style('padding', '5px 10px')
+        .style('border-radius', '4px')
+        .style('pointer-events', 'none')
+        .style('opacity', 0)
+        .style('font-size', '12px');
+
+    function showTooltip(event, driverId) {
+        const driverName = driverMap[driverId] || 'Unknown Driver';
+        const constructorId = driverConstructorMap[driverId];
+        const constructorName = constructorNameMap[constructorId] || 'N/A';
+        tooltip.transition()
+            .duration(200)
+            .style('opacity', 0.9);
+        tooltip.html(`<strong>${driverName}</strong><br>Constructor: ${constructorName}`)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 28) + 'px');
+    }
+
+    function hideTooltip() {
+        tooltip.transition()
+            .duration(500)
+            .style('opacity', 0);
+    }
+
+    const startRowsCount = startingGrid.length;
+    const finishRowsCount = finishingGrid.length;
+    const maxRows = Math.max(startRowsCount, finishRowsCount);
+    const tableAnimationTime = 300 + (maxRows - 1)*50 + 500;
+
+    setTimeout(() => {
+        d3.select('#position-chart')
+            .transition()
+            .duration(500)
+            .ease(d3.easeCubic)
+            .style('opacity', 1)
+            .on('end', function() {
+                animateLines();
+            });
+    }, tableAnimationTime);
+
+    function animateLines() {
+        hoverGroup.style('pointer-events', 'none');
+    
+        const driverLines = d3.selectAll('.driver-line');
+        const totalTransitions = driverLines.size();
+        let completedTransitions = 0;
+    
+        driverLines.transition()
+            .duration(2000)
+            .ease(d3.easeCubic)
+            .attr('stroke-dashoffset', 0)
+            .on('end', function() {
+                completedTransitions++;
+                if (completedTransitions === totalTransitions) {
+                    hoverGroup.style('pointer-events', 'all');
+                }
+            });
+    }
 }
