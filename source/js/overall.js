@@ -31,7 +31,7 @@ const generateColorPalette = (numColors) => {
     }
     return shuffle(colors);
 };
-const colorPalette = generateColorPalette(38);
+const colorPalette = generateColorPalette(30);
 
 let legendGroup;
 
@@ -249,7 +249,7 @@ function initializeAverageTopSpeedChart(years) {
     legendGroup.append("rect")
         .attr("x", -10)
         .attr("y", -10)
-        .attr("width", 250)
+        .attr("width", 240)
         .attr("height", 255)
         .attr("fill", "rgba(0, 0, 0, 0.7)")
         .attr("stroke", "#ffffff")
@@ -268,7 +268,7 @@ function initializeAverageTopSpeedChart(years) {
     legendGroup.append("foreignObject")
         .attr("x", 10)
         .attr("y", 30)
-        .attr("width", 220)
+        .attr("width", 230)
         .attr("height", 200)
         .append("xhtml:div")
         .attr("id", "legend-items")
@@ -541,7 +541,7 @@ function updateAverageTopSpeed(selectedYear) {
             .attr("class", "average-top-speed-circle")
             .attr("cx", xScaleAverageTopSpeed(d.year))
             .attr("cy", yScaleAverageTopSpeed(d.averageTopSpeed))
-            .attr("r", 3)
+            .attr("r", 2.5)
             .attr("fill", colorScale(d.circuitName))
             .style("opacity", 0)
             .on("mouseover", function (event, dataPoint) {
@@ -607,7 +607,7 @@ function updateLegend() {
         .style("margin-right", "6px");
 
     legendItems.append("span")
-        .text(d => d.length > 25 ? d.slice(0, 22) + '...' : d)
+        .text(d => d.length > 30 ? d.slice(0, 27) + '...' : d)
         .attr("title", d => d)
         .style("white-space", "nowrap")
         .style("overflow", "hidden")
