@@ -1,5 +1,5 @@
 function main() {
-    const racesCsvPath = '/source/data/races.csv';
+    const racesCsvPath = 'data/races.csv';
     
     d3.csv(racesCsvPath).then(function(racesData) {
         racesData.forEach(d => {
@@ -162,13 +162,13 @@ function initializePodiumAndFastestLap() {
 }
 
 function getData(selectedRaceId) {
-    const qualifyingCsvPath = '/source/data/qualifying.csv';
-    const resultsCsvPath = '/source/data/results.csv';
-    const driversCsvPath = '/source/data/drivers.csv';
-    const constructorsCsvPath = '/source/data/constructors.csv';
-    const statusCsvPath = '/source/data/status.csv';
-    const pitStopsCsvPath = '/source/data/pit_stops.csv';
-    const lapTimesCsvPath = '/source/data/lap_times.csv';
+    const qualifyingCsvPath = 'data/qualifying.csv';
+    const resultsCsvPath = 'data/results.csv';
+    const driversCsvPath = 'data/drivers.csv';
+    const constructorsCsvPath = 'data/constructors.csv';
+    const statusCsvPath = 'data/status.csv';
+    const pitStopsCsvPath = 'data/pit_stops.csv';
+    const lapTimesCsvPath = 'data/lap_times.csv';
 
     Promise.all([
         d3.csv(qualifyingCsvPath),
