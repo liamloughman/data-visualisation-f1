@@ -1,5 +1,5 @@
 function main() {
-    const racesCsvPath = '/source/data/races.csv';
+    const racesCsvPath = 'source/data/races.csv';
     
     d3.csv(racesCsvPath).then(function(racesData) {
         racesData.forEach(d => {
