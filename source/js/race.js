@@ -1,5 +1,5 @@
 function main() {
-    const racesCsvPath = '/source/data/races.csv';  
+    const racesCsvPath = '/source/data/races.csv';
     
     d3.csv(racesCsvPath).then(function(racesData) {
         racesData.forEach(d => {
@@ -1342,18 +1342,26 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             };
         });
 
+
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+            .domain(driverStats.map(d => d.driverId));
+
+        const fullNameToDriverId = new Map(driverStats.map(d => [d.fullName, d.driverId]));
+
         const filteredDriverStats = driverStats.filter(d => !(d.median === 0 && d.q1 === 0 && d.q3 === 0));
+
+        console.log(filteredDriverStats)
 
         if (filteredDriverStats.length === 0) {
             section.append('p')
                 .attr('class', 'no-lap-data-message')
                 .text('No valid lap time data available to display.')
-                .style('color', '#fff')
+                .style('fill', d => colorScale(fullNameToDriverId.get(d)) || '#fff')
                 .style('text-align', 'center');
             return;
         }
 
-        const margin = { top: 60, right: 150, bottom: 100, left: 100 };
+        const margin = { top: 60, right: 20, bottom: 100, left: 100 };
         const width = 1240 - margin.left - margin.right;
         const height = 500 - margin.top - margin.bottom;
 
@@ -1367,9 +1375,6 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
         const yScale = d3.scaleLinear()
             .domain([yMin, yMax])
             .range([height, 0]);
-
-        const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
-            .domain(filteredDriverStats.map(d => d.driverId));
 
         const svg = section.append('svg')
             .attr('id', 'lap-time-boxplot-svg')
