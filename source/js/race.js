@@ -611,9 +611,9 @@ function updateFinishingGrid(grid, initialGridForColor) {
                     const diff = finishingPos - startingPos;
 
                     if (diff < 0) {
-                        positionChangeSymbol = `<span style="color: #00ff00;">⋀</span><span>(+${-diff})</span>`;
+                        positionChangeSymbol = `<span style="color: #00ff00;">⋀</span><span> (+${-diff})</span>`;
                     } else if (diff > 0) {
-                        positionChangeSymbol = `<span style="color: #ff0000;">⋁</span><span>(-${diff})</span>`;
+                        positionChangeSymbol = `<span style="color: #ff0000;">⋁</span><span> (-${diff})</span>`;
                     } else {
                         positionChangeSymbol = `<span style="color: #aaaaaa;">−</span>`;
                     }
