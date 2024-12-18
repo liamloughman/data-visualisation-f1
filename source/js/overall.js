@@ -21,6 +21,14 @@ let previousDriverQTimesMap = new Map();
 let previousPitStopTimesMap = new Map();
 let driverConstructorMap = new Map();
 
+let xScaleConstructorWins, yScaleConstructorWins;
+let xAxisConstructorWins;
+let colorScaleConstructorWins;
+let constructorLastYearMap = new Map();
+let allActiveConstructors = [];
+let barHeight = 30;
+let maxConstructorsCount = 0;
+
 function main() {
     const racesCsvPath = 'data/races.csv';
     const resultsCsvPath = 'data/results.csv';
@@ -47,6 +55,7 @@ function main() {
             d.driverId = +d.driverId;
             d.constructorId = +d.constructorId;
             d.fastestLapSpeed = d.fastestLapSpeed === '\\N' ? null : +d.fastestLapSpeed;
+            d.positionOrder = +d.positionOrder;
         });
         circuitsData.forEach(d => {
             d.circuitId = +d.circuitId;
@@ -83,15 +92,35 @@ function main() {
         constructorsDataGlobal = constructorsData;
         pitStopsDataGlobal = pitStopsData;
         constructorNameMap = new Map(constructorsDataGlobal.map(c => [c.constructorId, c.name]));
-
         resultsDataGlobal.forEach(r => {
             const key = `${r.raceId}-${r.driverId}`;
             driverConstructorMap.set(key, r.constructorId);
         });
+
+        const constructorYearsMap = d3.group(resultsDataGlobal, d => d.constructorId);
+        constructorYearsMap.forEach((arr, cId) => {
+            let years = arr.map(d => {
+                const race = racesDataGlobal.find(r => r.raceId === d.raceId);
+                return race ? race.year : null;
+            }).filter(y => y !== null);
+            constructorLastYearMap.set(cId, d3.max(years));
+        });
+
+        let allConstructorsIds = Array.from(constructorLastYearMap.keys());
+
+        allActiveConstructors = allConstructorsIds.slice().sort((a, b) => {
+
+            const nameA = constructorNameMap.get(a) || "";
+            const nameB = constructorNameMap.get(b) || "";
+            return d3.ascending(nameA, nameB);
+        });
+        maxConstructorsCount = allActiveConstructors.length;
         const years = Array.from(new Set(racesData.map(d => d.year))).sort((a, b) => a - b);
         initializeYearSlider(years);
         initializeRaceCountChart(years);
         initializeAverageTopSpeedChart(years);
+
+        initializeConstructorWinsChart();
         createQualifyingTable();
         createPitStopTable();
         createInitialCharts(years);
@@ -220,7 +249,7 @@ function initializeAverageTopSpeedChart(years) {
     const generateF1ColorPalette = (numColors) => {
         const colors = [];
         const saturation = 100;
-        const lightness = 50;
+        const lightness = 37;
         for (let i = 0; i < numColors; i++) {
             const hue = Math.round((i * 360) / numColors);
             colors.push(`hsl(${hue}, ${saturation}%, ${lightness}%)`);
@@ -503,7 +532,7 @@ function updateAverageTopSpeed(selectedYear) {
             const circuitData = dataByCircuit.get(d).sort((a, b) => a.year - b.year);
             return (circuitData.length >= 2) ? lineGeneratorAverageTopSpeed(circuitData) : null;
         })
-        .style("opacity", d => dataByCircuit.get(d).length >= 2 ? 0 : 0)
+        .style("opacity", 0)
         .transition()
         .duration(750)
         .style("opacity", d => dataByCircuit.get(d).length >= 2 ? 1 : 0);
@@ -584,33 +613,187 @@ function updateLegend() {
         .style("text-overflow", "ellipsis");
 }
 
-function updateConstructorWins(selectedYear) {
+function initializeConstructorWinsChart() {
+    colorScaleConstructorWins = d3.scaleOrdinal(d3.schemeTableau10);
+
+
+    const container = d3.select('#constructor-wins');
+    container.selectAll('*').remove();
+
+    const wrapper = container.append('div')
+        .style('position', 'relative')
+        .style('width', '550px')
+        .style('overflow', 'hidden')
+        .style('margin', '0 auto');
+
+    const axisSvgHeight = 20;
+    const axisSvg = wrapper.append('svg')
+        .attr('width', '600px')
+        .attr('height', axisSvgHeight)
+        .style('position', 'sticky')
+        .style('top', '0')
+        .style('z-index', '10')
+        .style('background', '#111')
+        .style('margin-bottom', '-10px');
+    const barsDivHeight = 400;
+    const barsDiv = wrapper.append('div')
+        .style('overflow-y', 'auto')
+        .style('height', barsDivHeight + 'px')
+        .style('width', '600px')
+        .style('position', 'relative')
+        .style('background', '#111');
+
+
+    xScaleConstructorWins = d3.scaleLinear().range([0, 300]);
+
 
 }
 
-function createQualifyingTable() {
-    const container = d3.select('#driver-qualifying-time');
-    container.selectAll('*').remove();
-    const tableContainer = container.append('div')
-        .attr('id', 'qualifying-table-container')
-        .style('max-height', '300px')
-        .style('overflow-y', 'auto');
-    const table = tableContainer.append('table')
-        .attr('class', 'standings-table')
-        .style('border-collapse', 'collapse')
-        .style('width', '100%')
-        .style('font-family', 'Formula1')
-        .style('table-layout', 'fixed');
-    const thead = table.append('thead');
-    const headerRow = thead.append('tr');
-    headerRow.selectAll('th')
-        .data(['Pos', 'Driver', 'Team', 'Avg Qual. Time'])
-        .enter().append('th')
-        .text(d => d)
-        .style('text-align', 'center')
-        .style('vertical-align', 'middle')
-        .style('width', (d, i) => i === 0 ? '60px' : null);
-    table.append('tbody');
+function updateConstructorWins(selectedYear) {
+    const container = d3.select('#constructor-wins');
+    const wrapper = container.select('div');
+    if (wrapper.empty()) return;
+    const margin = {top: 20, right: 20, bottom: 20, left: 200};
+    const width = 600 - margin.left - margin.right;
+    const axisWidth = 600;
+    const axisHeight = 20;
+
+    const totalBarHeight = maxConstructorsCount * barHeight;
+    const barsSvgHeight = totalBarHeight + margin.top + margin.bottom;
+    const filteredRaces = racesDataGlobal.filter(d => d.year <= selectedYear);
+    const filteredRaceIds = new Set(filteredRaces.map(d => d.raceId));
+    const winners = resultsDataGlobal.filter(d => filteredRaceIds.has(d.raceId) && d.positionOrder === 1);
+
+    const constructorWinsMap = new Map(allActiveConstructors.map(cId => [cId, 0]));
+
+    winners.forEach(w => {
+        if (constructorWinsMap.has(w.constructorId)) {
+            constructorWinsMap.set(w.constructorId, constructorWinsMap.get(w.constructorId) + 1);
+        }
+    });
+    const constructorWinsData = allActiveConstructors.map(constructorId => {
+        const name = constructorNameMap.has(constructorId) ? constructorNameMap.get(constructorId) : "Unknown";
+        const lastYear = constructorLastYearMap.get(constructorId);
+        const isActive = lastYear !== undefined && lastYear >= selectedYear;
+        const wins = constructorWinsMap.get(constructorId) || 0;
+        return {constructorId, name, wins, isActive};
+    });
+
+    constructorWinsData.sort((a, b) => d3.descending(a.wins, b.wins));
+
+    xScaleConstructorWins.domain([0, d3.max(constructorWinsData, d => d.wins)]).nice();
+
+    yScaleConstructorWins = d3.scaleBand()
+        .domain(constructorWinsData.map(d => d.constructorId))
+        .range([0, totalBarHeight])
+        .padding(0.1);
+
+    const axisSvg = wrapper.select('svg')
+        .attr('width', axisWidth)
+        .attr('height', axisHeight);
+
+    const axisG = axisSvg.selectAll('.x-axis-cwins').data([null]);
+    axisG.enter().append('g')
+        .attr('class', 'x-axis-cwins')
+        .merge(axisG)
+        .attr('transform', `translate(${margin.left},${axisHeight - 20})`)
+        .call(d3.axisBottom(xScaleConstructorWins).ticks(5).tickSizeOuter(0))
+        .selectAll("text")
+        .style("font-family", "Formula1")
+        .style("font-size", "12px")
+        .style("fill", "#ffffff");
+    axisSvg.selectAll('.domain, .tick line')
+        .style('stroke', '#ffffff');
+    axisSvg.selectAll('text')
+        .style("fill", "#ffffff");
+
+    const barsDiv = wrapper.select('div');
+    let barsSvg = barsDiv.select('svg.cw-bars-svg');
+    if (barsSvg.empty()) {
+        barsSvg = barsDiv.append('svg')
+            .attr('class', 'cw-bars-svg')
+            .style('display', 'block')
+            .attr('width', 600)
+            .attr('height', barsSvgHeight)
+            .style('margin', '0 auto');
+    }
+    const g = barsSvg.selectAll('.bars-group').data([null]);
+    const gEnter = g.enter().append('g')
+        .attr('class', 'bars-group')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+    const gBars = gEnter.merge(g);
+
+    const bars = gBars.selectAll('.constructor-bar')
+        .data(constructorWinsData, d => d.constructorId);
+    const t = d3.transition().duration(1000);
+    bars.exit().remove();
+    const barEnter = bars.enter().append('rect')
+        .attr('class', 'constructor-bar')
+        .attr('y', d => yScaleConstructorWins(d.constructorId))
+        .attr('height', yScaleConstructorWins.bandwidth())
+        .attr('x', 0)
+        .attr('width', 0)
+        .attr('fill', d => d.isActive ? colorScaleConstructorWins(d.constructorId) : '#888');
+    barEnter.merge(bars)
+        .transition(t)
+        .attr('y', d => yScaleConstructorWins(d.constructorId))
+        .attr('height', yScaleConstructorWins.bandwidth())
+        .attr('width', d => xScaleConstructorWins(d.wins))
+        .attr('fill', d => d.isActive ? colorScaleConstructorWins(d.constructorId) : '#888');
+
+    const labels = gBars.selectAll('.constructor-wins-label')
+        .data(constructorWinsData, d => d.constructorId);
+    labels.exit().remove();
+    const labelsEnter = labels.enter().append('text')
+        .attr('class', 'constructor-wins-label')
+        .attr('x', d => xScaleConstructorWins(d.wins) + 5)
+        .attr('y', d => yScaleConstructorWins(d.constructorId) + yScaleConstructorWins.bandwidth() / 2)
+        .attr('dy', '0.35em')
+        .style("font-family", "Formula1")
+        .style("font-size", "12px")
+        .style("fill", "#ffffff")
+        .text(d => d.wins)
+        .style('opacity', 0);
+    labelsEnter.merge(labels)
+        .transition(t)
+        .attr('x', d => xScaleConstructorWins(d.wins) + 5)
+        .attr('y', d => yScaleConstructorWins(d.constructorId) + yScaleConstructorWins.bandwidth() / 2)
+        .style('opacity', 1)
+        .text(d => d.wins);
+
+    const teamLabels = gBars.selectAll('.constructor-label-group')
+        .data(constructorWinsData, d => d.constructorId);
+    teamLabels.exit().remove();
+    const teamLabelsEnter = teamLabels.enter().append('g')
+        .attr('class', 'constructor-label-group');
+    teamLabelsEnter.append('image')
+        .attr('class', 'constructor-icon')
+        .attr('width', 20)
+        .attr('height', 20)
+        .attr('x', -170)
+        .attr('y', d => yScaleConstructorWins(d.constructorId) + (yScaleConstructorWins.bandwidth() - 20) / 2)
+        .attr('href', d => `images/team_logos/${d.constructorId}.png`)
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .on('error', function () {
+            d3.select(this).attr('href', 'images/team_logos/default.png');
+        });
+    teamLabelsEnter.append('text')
+        .attr('class', 'constructor-name-label')
+        .attr('x', -140)
+        .attr('y', d => yScaleConstructorWins(d.constructorId) + yScaleConstructorWins.bandwidth() / 2)
+        .attr('dy', '0.35em')
+        .style("font-family", "Formula1")
+        .style("font-size", "12px")
+        .style("fill", "#ffffff")
+        .text(d => d.name);
+    teamLabelsEnter.merge(teamLabels)
+        .select('image.constructor-icon')
+        .transition(t)
+        .attr('y', d => yScaleConstructorWins(d.constructorId) + (yScaleConstructorWins.bandwidth() - 20) / 2);
+    teamLabelsEnter.merge(teamLabels)
+        .select('text.constructor-name-label')
+        .transition(t)
+        .attr('y', d => yScaleConstructorWins(d.constructorId) + yScaleConstructorWins.bandwidth() / 2);
 }
 
 function updateDriverQualifyingTime(selectedYear) {
@@ -661,7 +844,6 @@ function updateDriverQualifyingTime(selectedYear) {
         .remove();
     const enter = rows.enter().append('tr')
         .style('opacity', 0);
-
     enter.filter(d => d.message)
         .append('td')
         .attr('colspan', 4)
@@ -704,7 +886,6 @@ function updateDriverQualifyingTime(selectedYear) {
         d3.select(this).text(d.avgMs ? formatMsToTime(oldVal) : '');
         d._oldVal = oldVal;
     });
-
     if (!dataToShow[0]?.message) {
         allRows.sort((a, b) => d3.ascending(a.avgMs, b.avgMs));
     }
@@ -712,7 +893,6 @@ function updateDriverQualifyingTime(selectedYear) {
     allRows.each(function (d) {
         oldPositions.set(d.driverId || d.message, this.getBoundingClientRect());
     });
-
     if (!dataToShow[0]?.message) {
         const newPositions = new Map();
         allRows.each(function (d) {
@@ -754,7 +934,6 @@ function updateDriverQualifyingTime(selectedYear) {
                 });
         });
     } else {
-
         allRows.transition().duration(500).style('opacity', 1);
     }
 
@@ -764,6 +943,31 @@ function updateDriverQualifyingTime(selectedYear) {
         const seconds = (totalSeconds % 60).toFixed(3);
         return `${minutes}:${seconds.padStart(6, '0')}`;
     }
+}
+
+function createQualifyingTable() {
+    const container = d3.select('#driver-qualifying-time');
+    container.selectAll('*').remove();
+    const tableContainer = container.append('div')
+        .attr('id', 'qualifying-table-container')
+        .style('max-height', '300px')
+        .style('overflow-y', 'auto');
+    const table = tableContainer.append('table')
+        .attr('class', 'standings-table')
+        .style('border-collapse', 'collapse')
+        .style('width', '100%')
+        .style('font-family', 'Formula1')
+        .style('table-layout', 'fixed');
+    const thead = table.append('thead');
+    const headerRow = thead.append('tr');
+    headerRow.selectAll('th')
+        .data(['Pos', 'Driver', 'Team', 'Avg Qual. Time'])
+        .enter().append('th')
+        .text(d => d)
+        .style('text-align', 'center')
+        .style('vertical-align', 'middle')
+        .style('width', (d, i) => i === 0 ? '60px' : null);
+    table.append('tbody');
 }
 
 function createPitStopTable() {
@@ -841,7 +1045,6 @@ function updateAveragePitStopTime(selectedYear) {
         .remove();
     const enter = rows.enter().append('tr')
         .style('opacity', 0);
-
     enter.filter(d => d.message)
         .append('td')
         .attr('colspan', 4)
@@ -932,7 +1135,6 @@ function updateAveragePitStopTime(selectedYear) {
                 });
         });
     } else {
-
         allRows.transition().duration(500).style('opacity', 1);
     }
 

@@ -98,6 +98,22 @@
             font-weight: normal;
         }
 
+
+        .main-header {
+            position: sticky;
+            top: 0;
+            background: #000;
+            z-index: 1000;
+        }
+
+        #year-slider-container {
+            position: sticky;
+            top: 50px; /* Adjust if needed depending on .main-header height */
+            background: #000;
+            z-index: 999;
+            padding: 10px 0;
+        }
+
         .slider-container {
             display: flex;
             flex-direction: column;
@@ -169,7 +185,7 @@
 
         .info-row {
             display: flex;
-            gap: 20px;
+            gap: 22px;
             justify-content: center;
             width: 100%;
             max-width: 1200px;
@@ -245,13 +261,11 @@
             <div class="info-card">
                 <h2>Race Count</h2>
                 <div class="content" id="race-count">
-
                 </div>
             </div>
             <div class="info-card" id="average-top-speed-info-card">
                 <h2>Average Top Speed per Circuit</h2>
                 <div class="content" id="average-top-speed">
-
                 </div>
             </div>
         </div>
@@ -260,13 +274,11 @@
             <div class="info-card">
                 <h2>Average Qualifying Time</h2>
                 <div class="content" id="driver-qualifying-time">
-
                 </div>
             </div>
             <div class="info-card">
                 <h2>Average Pit Stop Time</h2>
                 <div class="content" id="average-top-pit-stop-time">
-
                 </div>
             </div>
         </div>
@@ -275,15 +287,13 @@
             <div class="info-card">
                 <h2>Constructor Wins</h2>
                 <div class="content" id="constructor-wins">
-
-                Loading...
                 </div>
             </div>
             <div class="info-card">
                 <h2>Driver Nationality Distribution</h2>
                 <div class="content" id="driver-nationality-map">
 
-                Loading...
+                    Loading...
                 </div>
 
                 <button class="toggle-button" onclick="toggleMap()">Toggle View</button>
