@@ -35,7 +35,7 @@ function main() {
     const circuitsCsvPath = 'data/circuits.csv';
     const driversCsvPath = 'data/drivers.csv';
     const qualifyingCsvPath = 'data/qualifying.csv';
-    const constructorsCsvPath = 'data/Constructors.csv';
+    const constructorsCsvPath = 'data/constructors.csv';
     const pitStopsCsvPath = 'data/pit_stops.csv';
     Promise.all([
         d3.csv(racesCsvPath),

@@ -297,7 +297,8 @@ function getData(selectedRaceId) {
                 time: d.time !== '\\N' ? d.time : statusMap[+d.statusId] || 'Unknown Status',
                 constructorId: d.constructorId,
                 constructorName: constructorNameMap[d.constructorId] || 'N/A',
-                laps: +d.laps
+                laps: +d.laps,
+                statusId: d.statusId
             }));
 
         lapTimesData.forEach(d => {
@@ -359,7 +360,7 @@ function getData(selectedRaceId) {
         updatePodium(podiumData);
         updateFastestLap(fastestLapData);
         updateStartingGrid(startingGrid);
-        updateFinishingGrid(finishingGrid, startingGrid);
+        updateFinishingGrid(finishingGrid, startingGrid, positionData);
         updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions, driverConstructorMap);
         renderLapTimeLineChart(driversWithLapTimes);
         renderLapTimeBoxPlot(driversWithLapTimes);
@@ -571,14 +572,24 @@ function determineTime(q1, q2, q3) {
     return 'No Time Set';
 }
 
-function updateFinishingGrid(grid, initialGridForColor) {
+function updateFinishingGrid(grid, initialGridForColor, positionDataForColor) {
     const tbody = d3.select('#finishing-grid tbody');
     tbody.selectAll('tr').remove();
 
     const driverIdMap = new Map(grid.map(d => [d.driverFullName, d.driverId]));
-        
+
+    let colorDomain;
+    if (!initialGridForColor || initialGridForColor.length === 0) {
+        const lap1Positions = positionDataForColor.filter(d => d.lap === 1);
+        const uniqueDriverIds = Array.from(new Set(lap1Positions.map(d => d.driverId)));
+        colorDomain = uniqueDriverIds;
+    } else {
+        colorDomain = initialGridForColor.map(d => d.driverId);
+    }
+
     const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
-        .domain(initialGridForColor.map(d => d.driverId));
+        .domain(colorDomain);
+
 
     const maxLaps = d3.max(grid, d => d.laps);
 
@@ -600,6 +611,10 @@ function updateFinishingGrid(grid, initialGridForColor) {
                 displayPosition = 'DNF';
             } else {
                 displayPosition = row.position;
+            }
+
+            if (row.statusId == 2) {
+                displayPosition = 'DSQ';
             }
 
             let positionChangeSymbol = '';
