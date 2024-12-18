@@ -1,5 +1,5 @@
 function main() {
-    const racesCsvPath = 'data/Races.csv';  
+    const racesCsvPath = 'data/races.csv';
     
     d3.csv(racesCsvPath).then(function(racesData) {
         racesData.forEach(d => {
@@ -277,7 +277,7 @@ function getData(selectedRaceId) {
                 driverFullName: driverFullName,
                 forename: driverForenameMap[d.driverId] || 'Unknown',
                 surname: driverSurnameMap[d.driverId] || 'Unknown',
-                time: determineBestTime(d.q1, d.q2, d.q3),
+                time: determineTime(d.q1, d.q2, d.q3),
                 constructorId: matchingResult ? matchingResult.constructorId : null,
                 constructorName: matchingResult ? constructorNameMap[matchingResult.constructorId] : 'N/A'
             };
@@ -296,7 +296,9 @@ function getData(selectedRaceId) {
                 surname: driverSurnameMap[d.driverId] || 'Unknown',
                 time: d.time !== '\\N' ? d.time : statusMap[+d.statusId] || 'Unknown Status',
                 constructorId: d.constructorId,
-                constructorName: constructorNameMap[d.constructorId] || 'N/A'
+                constructorName: constructorNameMap[d.constructorId] || 'N/A',
+                laps: +d.laps,
+                statusId: d.statusId
             }));
 
         lapTimesData.forEach(d => {
@@ -354,15 +356,14 @@ function getData(selectedRaceId) {
             driverFamilyName: driver.surname || 'Unknown',
             lapTimes: lapTimeByDriver.get(driver.driverId) || []
         }));
-
-        console.log("Drivers During Race and Their Lap Times:", driversWithLapTimes);
         
         updatePodium(podiumData);
         updateFastestLap(fastestLapData);
         updateStartingGrid(startingGrid);
-        updateFinishingGrid(finishingGrid);
+        updateFinishingGrid(finishingGrid, startingGrid, positionData);
         updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions, driverConstructorMap);
         renderLapTimeLineChart(driversWithLapTimes);
+        renderLapTimeBoxPlot(driversWithLapTimes);
 
     }).catch(console.error);
 }
@@ -482,6 +483,11 @@ function updateStartingGrid(grid) {
 
     tbody.selectAll('tr').remove();
 
+    const driverIdMap = new Map(grid.map(d => [d.driverFullName, d.driverId]));
+        
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+        .domain(grid.map(d => d.driverId));
+
     if (grid.length === 0) {
         tbody.append('tr').append('td')
             .attr('colspan', 3)
@@ -505,8 +511,9 @@ function updateStartingGrid(grid) {
                 `);
 
             tr.append('td').text(row.time)
+            const driverId = driverIdMap.get(row.driverFullName);
             tr.on('mouseover', function(event) {
-                showTooltip(event, row.driverFullName, row.constructorName);
+                showTooltip(event, row.driverFullName, row.constructorName, driverId);
             })
             .on('mousemove', function(event) {
                 tooltip.style('left', (event.pageX + 10) + 'px')
@@ -541,11 +548,12 @@ function updateStartingGrid(grid) {
         .style('opacity', 0)
         .style('font-size', '12px');
 
-    function showTooltip(event, driverFullName, constructorName) {
+    function showTooltip(event, driverFullName, constructorName, driverId) {
+        const color = driverId ? colorScale(driverId) : '#fff';
         tooltip.transition()
             .duration(200)
             .style('opacity', 0.9);
-        tooltip.html(`<strong>${driverFullName}</strong><br>Constructor: ${constructorName}`)
+        tooltip.html(`<strong style="color: ${color};">${driverFullName}</strong><br>Constructor: ${constructorName}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
     }
@@ -557,16 +565,33 @@ function updateStartingGrid(grid) {
     }
 }
 
-function determineBestTime(q1, q2, q3) {
+function determineTime(q1, q2, q3) {
     if (q3 && q3 !== '\\N') return q3;
     if (q2 && q2 !== '\\N') return q2;
     if (q1 && q1 !== '\\N') return q1;
     return 'No Time Set';
 }
 
-function updateFinishingGrid(grid) {
+function updateFinishingGrid(grid, initialGridForColor, positionDataForColor) {
     const tbody = d3.select('#finishing-grid tbody');
     tbody.selectAll('tr').remove();
+
+    const driverIdMap = new Map(grid.map(d => [d.driverFullName, d.driverId]));
+
+    let colorDomain;
+    if (!initialGridForColor || initialGridForColor.length === 0) {
+        const lap1Positions = positionDataForColor.filter(d => d.lap === 1);
+        const uniqueDriverIds = Array.from(new Set(lap1Positions.map(d => d.driverId)));
+        colorDomain = uniqueDriverIds;
+    } else {
+        colorDomain = initialGridForColor.map(d => d.driverId);
+    }
+
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+        .domain(colorDomain);
+
+
+    const maxLaps = d3.max(grid, d => d.laps);
 
     if (grid.length === 0) {
         tbody.append('tr').append('td')
@@ -578,23 +603,41 @@ function updateFinishingGrid(grid) {
         grid.forEach(row => {
             const driverDisplay = row.driverCode === '\\N' ? row.surname : row.driverCode;
             const timeStr = row.time;
-            const lowerTime = timeStr.toLowerCase();
 
             let displayPosition;
-            
-            if (lowerTime.includes('lap')) {
-                displayPosition = row.position;
-            } else if (
-                (/^\+\d+(\.\d+)?$/.test(timeStr)) || (timeStr.includes(':'))
-            ) {
-                displayPosition = row.position;
-            } else {
+        
+            const driverLaps = row.laps;
+            if (driverLaps < maxLaps * 0.9) {
                 displayPosition = 'DNF';
+            } else {
+                displayPosition = row.position;
+            }
+
+            if (row.statusId == 2) {
+                displayPosition = 'DSQ';
+            }
+
+            let positionChangeSymbol = '';
+            if (!isNaN(parseInt(displayPosition))) {
+                const finishingPos = parseInt(displayPosition);
+                const startInfo = initialGridForColor.find(s => s.driverId === row.driverId);
+                if (startInfo) {
+                    const startingPos = startInfo.position;
+                    const diff = finishingPos - startingPos;
+
+                    if (diff < 0) {
+                        positionChangeSymbol = `<span style="color: #00ff00;">⋀</span><span> (+${-diff})</span>`;
+                    } else if (diff > 0) {
+                        positionChangeSymbol = `<span style="color: #ff0000;">⋁</span><span> (-${diff})</span>`;
+                    } else {
+                        positionChangeSymbol = `<span style="color: #aaaaaa;">−</span>`;
+                    }
+                }
             }
 
             const tr = tbody.append('tr')
                 .style('opacity', 0);
-            tr.append('td').text(displayPosition);
+            tr.append('td').html(`${displayPosition} ${positionChangeSymbol}`);
 
             tr.append('td')
                 .style('text-align', 'left')
@@ -606,8 +649,9 @@ function updateFinishingGrid(grid) {
                 `);
 
             tr.append('td').text(timeStr)
+            const driverId = driverIdMap.get(row.driverFullName);
             tr.on('mouseover', function(event) {
-                showTooltip(event, row.driverFullName, row.constructorName);
+                showTooltip(event, row.driverFullName, row.constructorName, driverId);
             })
             .on('mousemove', function(event) {
                 tooltip.style('left', (event.pageX + 10) + 'px')
@@ -642,11 +686,12 @@ function updateFinishingGrid(grid) {
         .style('opacity', 0)
         .style('font-size', '12px');
 
-    function showTooltip(event, driverFullName, constructorName) {
+    function showTooltip(event, driverFullName, constructorName, driverId) {
+        const color = driverId ? colorScale(driverId) : '#fff';
         tooltip.transition()
             .duration(200)
             .style('opacity', 0.9);
-        tooltip.html(`<strong>${driverFullName}</strong><br>Constructor: ${constructorName}`)
+        tooltip.html(`<strong style="color: ${color};">${driverFullName}</strong><br>Constructor: ${constructorName}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
     }
@@ -761,84 +806,82 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         const color = colorScale(driverId);
 
         let pathNode;
-        if (lapsData.length > 1) {
-            const path = linesGroup.append('path')
-                .datum(lapsData)
-                .attr('fill', 'none')
-                .attr('stroke', color)
-                .attr('stroke-width', 2)
-                .attr('d', line)
-                .attr('class', `position-driver-line position-driver-line-${driverId}`);
+        const path = linesGroup.append('path')
+            .datum(lapsData)
+            .attr('fill', 'none')
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('d', line)
+            .attr('class', `position-driver-line position-driver-line-${driverId}`);
 
-            const lastData = lapsData[lapsData.length - 1];
+        const lastData = lapsData[lapsData.length - 1];
 
-            svg.append('circle')
-                .attr('cx', xScale(lastData.lap))
-                .attr('cy', yScale(lastData.position))
-                .attr('r', 4)
-                .attr('fill', color)
-                .attr('class', `position-driver-circle position-driver-circle-${driverId}`)
-                .style('opacity', 1);
+        svg.append('circle')
+            .attr('cx', xScale(lastData.lap))
+            .attr('cy', yScale(lastData.position))
+            .attr('r', 4)
+            .attr('fill', color)
+            .attr('class', `position-driver-circle position-driver-circle-${driverId}`)
+            .style('opacity', 1);
 
-            pathNode = path.node();
-            const totalLength = pathNode.getTotalLength();
-            path
-                .attr('stroke-dasharray', totalLength + ' ' + totalLength)
-                .attr('stroke-dashoffset', totalLength);
+        pathNode = path.node();
+        const totalLength = pathNode.getTotalLength();
+        path
+            .attr('stroke-dasharray', totalLength + ' ' + totalLength)
+            .attr('stroke-dashoffset', totalLength);
 
-            hoverGroup.append('path')
-                .datum(lapsData)
-                .attr('fill', 'none')
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', 5)
-                .attr('d', line)
-                .attr('class', `driver-hover driver-hover-${driverId}`)
-                .style('cursor', 'pointer')
-                .on('mouseover', function(event) {
-                    d3.selectAll('.position-driver-line')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 0.3);
+        hoverGroup.append('path')
+            .datum(lapsData)
+            .attr('fill', 'none')
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 5)
+            .attr('d', line)
+            .attr('class', `driver-hover driver-hover-${driverId}`)
+            .style('cursor', 'pointer')
+            .on('mouseover', function(event) {
+                d3.selectAll('.position-driver-line')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 0.3);
 
-                    d3.selectAll('.position-driver-circle')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 0.3);
+                d3.selectAll('.position-driver-circle')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 0.3);
 
-                    d3.select(`.position-driver-line-${driverId}`)
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('stroke-width', 4);
+                d3.select(`.position-driver-line-${driverId}`)
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('stroke-width', 4);
 
-                    d3.selectAll(`.position-driver-circle-${driverId}`)
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('r', 8);
-                    
-                    showTooltip(event, driverId);
-                })
-                .on('mousemove', function(event) {
-                    tooltip.style('left', (event.pageX + 10) + 'px')
-                           .style('top', (event.pageY - 28) + 'px');
-                })
-                .on('mouseout', function() {
-                    d3.selectAll('.position-driver-line')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('stroke-width', 2);
+                d3.selectAll(`.position-driver-circle-${driverId}`)
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('r', 8);
+                
+                showTooltip(event, driverId);
+            })
+            .on('mousemove', function(event) {
+                tooltip.style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 28) + 'px');
+            })
+            .on('mouseout', function() {
+                d3.selectAll('.position-driver-line')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('stroke-width', 2);
 
-                    d3.selectAll('.position-driver-circle')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('r', 4);
-                    
-                    hideTooltip();
-                });
-        }
+                d3.selectAll('.position-driver-circle')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('r', 4);
+                
+                hideTooltip();
+            });
     }
 
     const tooltip = d3.select('body').append('div')
@@ -856,10 +899,11 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         const driverName = driverMap[driverId] || 'Unknown Driver';
         const constructorId = driverConstructorMap[driverId];
         const constructorName = constructorNameMap[constructorId] || 'N/A';
+        const color = colorScale(driverId);
         tooltip.transition()
             .duration(200)
             .style('opacity', 0.9);
-        tooltip.html(`<strong>${driverName}</strong><br>Constructor: ${constructorName}`)
+        tooltip.html(`<strong style="color: ${color};">${driverName}</strong><br>Constructor: ${constructorName}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
     }
@@ -914,219 +958,233 @@ function renderLapTimeLineChart(driversWithLapTimes) {
 
     const container = d3.select('#lap-chart');
 
-    container.selectAll('svg')
-        .transition()
-        .duration(300)
-        .style('opacity', 0)
-        .remove();
+    const existingSvg = container.select('#lap-time-chart-svg');
 
-    container.selectAll('.no-lap-data-message')
-        .transition()
-        .duration(300)
-        .style('opacity', 0)
-        .remove();
+    const transitionDuration = 300;
 
-    container.select('#driver-buttons-container')
-        .transition()
-        .duration(300)
-        .style('opacity', 0)
-        .remove();
-
-    const width = container.node().getBoundingClientRect().width;
-    const height = 500;
-    const margin = { top: 20, right: 30, bottom: 50, left: 70 };
-
-    const allLapData = driversWithLapTimes.flatMap(driver => 
-        driver.lapTimes.map(d => ({
-            driverId: driver.driverId, 
-            lap: d.lap, 
-            milliseconds: d.milliseconds,
-            driverCode: driver.driverCode,
-            driverFamilyName: driver.driverFamilyName
-        }))
-    );
-
-    if (allLapData.length === 0) {
-        container.append('div')
-            .attr('class', 'no-lap-data-message')
-            .style('display', 'flex')
-            .style('justify-content', 'center')
-            .style('align-items', 'center')
-            .style('color', '#fff')
-            .text('No lap time data available.');
-        return;
+    if (!existingSvg.empty()) {
+        existingSvg.transition()
+            .duration(transitionDuration)
+            .style('opacity', 0)
+            .remove()
+            .on('end', appendNewSvgAndRender);
+    } else {
+        appendNewSvgAndRender();
     }
 
-    const xDomain = [1, d3.max(allLapData, d => d.lap)];
-    const yDomain = [d3.min(allLapData, d => d.milliseconds), d3.max(allLapData, d => d.milliseconds)];
-
-    const svg = container.append('svg')
-        .attr('id', 'lap-time-chart-svg')
-        .attr('width', width)
-        .attr('height', height)
-        .style('background', '#222')
-        .style('border-radius', '8px')
-        .style('margin-top', '20px')
-        .style('opacity', 0);
-
-    const xScale = d3.scaleLinear()
-        .domain(xDomain)
-        .range([margin.left, width - margin.right]);
-
-    const yScale = d3.scaleLinear()
-        .domain(yDomain)
-        .range([height - margin.bottom, margin.top]);
-
-    svg.node().__lapTimeScales = { xScale, yScale, margin, width, height };
-
-    svg.append('g')
-        .attr('transform', `translate(0, ${height - margin.bottom})`)
-        .call(d3.axisBottom(xScale).tickFormat(d3.format('d')))
-        .selectAll('text')
-        .style('fill', 'white');
-
-    svg.append('g')
-        .attr('transform', `translate(${margin.left},0)`)
-        .call(d3.axisLeft(yScale))
-        .selectAll('text')
-        .style('fill', 'white');
-
-    svg.append('text')
-        .attr('x', width / 2)
-        .attr('y', height - 10)
-        .attr('text-anchor', 'middle')
-        .attr('fill', 'white')
-        .text('Lap Number');
-
-    svg.append('text')
-        .attr('transform', 'rotate(-90)')
-        .attr('x', -height / 2)
-        .attr('y', 15)
-        .attr('text-anchor', 'middle')
-        .attr('fill', 'white')
-        .text('Lap Time (ms)');
-
-    svg.append('g').attr('class', 'lap-time-lines-group');
-
-    svg.append('g').attr('class', 'lap-time-hover-circles-group');
-
-    svg.transition().duration(500).style('opacity', 1);
-
-    createDriverButtons(driversWithLapTimes);
-
-    const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
-                         .domain(driversWithLapTimes.map(d => d.driverId));
-
-    const firstThree = driversWithLapTimes.slice(0, 3);
-    firstThree.forEach(d => {
-        toggleLapTimeChart(driversWithLapTimes, d.driverId, true);
-        d3.select(`.driver-button[data-driver-id='${d.driverId}']`)
-            .classed('selected', true)
-            .style('border-color', colorScale(d.driverId));
-    });
-
-    const tooltip = container.append('div')
-        .attr('class', 'shared-tooltip')
-        .style('position', 'absolute')
-        .style('background', 'rgba(0, 0, 0, 0.8)')
-        .style('color', '#fff')
-        .style('padding', '10px')
-        .style('border-radius', '4px')
-        .style('pointer-events', 'none')
-        .style('opacity', 0)
-        .style('font-size', '12px')
-        .style('max-width', '300px')
-        .style('z-index', '10');
-
-    svg.append('rect')
-        .attr('width', width - margin.left - margin.right)
-        .attr('height', height - margin.top - margin.bottom)
-        .attr('x', margin.left)
-        .attr('y', margin.top)
-        .style('fill', 'none')
-        .style('pointer-events', 'all')
-        .on('mousemove', mousemove)
-        .on('mouseout', () => {
-            tooltip.transition().duration(500).style('opacity', 0);
-            svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
-        });
-
-    function mousemove(event) {
-        const [mouseX, mouseY] = d3.pointer(event);
-        const lap = Math.round(xScale.invert(mouseX));
-        if (lap < xDomain[0] || lap > xDomain[1]) {
-            tooltip.transition().duration(500).style('opacity', 0);
-            svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
-            return;
-        }
-
-        const selectedDriverIds = Array.from(document.querySelectorAll('.driver-button.selected'))
-            .map(button => +button.getAttribute('data-driver-id'));
-
-        if (selectedDriverIds.length === 0) {
-            tooltip.transition().duration(500).style('opacity', 0);
-            svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
-            return;
-        }
-
-        const lapTimesAtLap = driversWithLapTimes
-            .filter(driver => selectedDriverIds.includes(driver.driverId))
-            .map(driver => {
-                const lapTime = driver.lapTimes.find(d => d.lap === lap);
-                return {
-                    driverId: driver.driverId,
-                    driverName: driver.driverCode !== '\\N' ? driver.driverCode : driver.driverFamilyName,
-                    milliseconds: lapTime ? lapTime.milliseconds : null,
-                    lap: lapTime ? lapTime.lap : null
-                };
-            })
-            .filter(d => d.milliseconds !== null);
-
-        if (lapTimesAtLap.length === 0) {
-            tooltip.transition().duration(500).style('opacity', 0);
-            svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
-            return;
-        }
-
-        let htmlContent = `<strong>Lap ${lap}</strong><br/><br/>`;
-        lapTimesAtLap.forEach(d => {
-            const color = colorScale(d.driverId);
-            const formattedTime = formatMilliseconds(d.milliseconds);
-            htmlContent += `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="width: 12px; height: 12px; background-color: ${color}; border-radius: 50%; display: inline-block;"></span>
-                    <span>${d.driverName}</span>
-                    <span>${formattedTime}</span>
-                </div>
-            `;
-        });
-
-        tooltip.html(htmlContent)
-            .style('left', (event.pageX + 15) + 'px')
-            .style('top', (event.pageY - 28) + 'px')
+    function appendNewSvgAndRender() {
+        container.selectAll('.line-no-lap-data-message')
             .transition()
-            .duration(200)
-            .style('opacity', 0.9);
+            .duration(transitionDuration)
+            .style('opacity', 0)
+            .remove();
 
-        const hoverCirclesGroup = svg.select('.lap-time-hover-circles-group');
-        hoverCirclesGroup.selectAll('circle').remove();
+        container.select('#driver-buttons-container')
+            .transition()
+            .duration(transitionDuration)
+            .style('opacity', 0)
+            .remove();
 
-        lapTimesAtLap.forEach(d => {
-            hoverCirclesGroup.append('circle')
-                .attr('cx', xScale(d.lap))
-                .attr('cy', yScale(d.milliseconds))
-                .attr('r', 6)
-                .attr('fill', 'none')
-                .attr('stroke', 'white')
-                .attr('stroke-width', 2)
-                .attr('pointer-events', 'none');
+        container.select('.lap-time-driver-lap-line').remove();
+
+        const width = container.node().getBoundingClientRect().width;
+        const height = 500;
+        const margin = { top: 20, right: 30, bottom: 50, left: 100 };
+
+        const allLapData = driversWithLapTimes.flatMap(driver => 
+            driver.lapTimes.map(d => ({
+                driverId: driver.driverId, 
+                lap: d.lap, 
+                milliseconds: d.milliseconds,
+                driverCode: driver.driverCode,
+                driverFamilyName: driver.driverFamilyName
+            }))
+        );
+
+        if (allLapData.length === 0) {
+            container.append('div')
+                .attr('class', 'line-no-lap-data-message')
+                .style('display', 'flex')
+                .style('justify-content', 'center')
+                .style('align-items', 'center')
+                .style('color', '#fff')
+                .text('No lap time data available.');
+            return;
+        }
+
+        const xDomain = [1, d3.max(allLapData, d => d.lap)];
+        const yDomain = [d3.min(allLapData, d => d.milliseconds), d3.max(allLapData, d => d.milliseconds)];
+
+        const xScale = d3.scaleLinear()
+            .domain(xDomain)
+            .range([margin.left, width - margin.right]);
+
+        const yScale = d3.scaleLinear()
+            .domain(yDomain)
+            .range([height - margin.bottom, margin.top]);
+
+        const svg = container.append('svg')
+            .attr('id', 'lap-time-chart-svg')
+            .attr('width', width)
+            .attr('height', height)
+            .style('background', '#222')
+            .style('border-radius', '8px')
+            .style('margin-top', '20px')
+            .style('opacity', 0);
+
+        svg.node().__lapTimeScales = { xScale, yScale, margin, width, height };
+
+        svg.append('g')
+            .attr('transform', `translate(0, ${height - margin.bottom})`)
+            .call(d3.axisBottom(xScale).tickFormat(d3.format('d')))
+            .selectAll('text')
+            .style('fill', 'white')
+            .style('text-anchor', 'middle')
+            .style('font-family', 'Formula1');
+
+        svg.append('g')
+            .attr('transform', `translate(${margin.left},0)`)
+            .call(d3.axisLeft(yScale))
+            .selectAll('text')
+            .style('fill', 'white')
+            .style('font-family', 'Formula1');
+
+        svg.append('text')
+            .attr('x', width / 2)
+            .attr('y', height - 10)
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'white')
+            .text('Lap Number');
+
+        svg.append('text')
+            .attr('transform', 'rotate(-90)')
+            .attr('x', -height / 2)
+            .attr('y', 30)
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'white')
+            .text('Lap Time (ms)');
+
+        svg.append('g').attr('class', 'lap-time-lines-group');
+        svg.append('g').attr('class', 'lap-time-hover-circles-group');
+
+        svg.transition()
+            .duration(500)
+            .style('opacity', 1);
+
+        createDriverButtons(driversWithLapTimes);
+
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+                             .domain(driversWithLapTimes.map(d => d.driverId));
+
+        const firstThree = driversWithLapTimes.slice(0, 3);
+        firstThree.forEach(d => {
+            toggleLapTimeChart(driversWithLapTimes, d.driverId, true);
+            d3.select(`.driver-button[data-driver-id='${d.driverId}']`)
+                .classed('selected', true)
+                .style('border-color', colorScale(d.driverId));
         });
+
+        const tooltip = container.append('div')
+            .attr('class', 'shared-tooltip')
+            .style('position', 'absolute')
+            .style('background', 'rgba(0, 0, 0, 0.8)')
+            .style('color', '#fff')
+            .style('padding', '10px')
+            .style('border-radius', '4px')
+            .style('pointer-events', 'none')
+            .style('opacity', 0)
+            .style('font-size', '12px')
+            .style('max-width', '300px')
+            .style('z-index', '10');
+
+        svg.append('rect')
+            .attr('width', width - margin.left - margin.right)
+            .attr('height', height - margin.top - margin.bottom)
+            .attr('x', margin.left)
+            .attr('y', margin.top)
+            .style('fill', 'none')
+            .style('pointer-events', 'all')
+            .on('mousemove', mousemove)
+            .on('mouseout', () => {
+                tooltip.transition().duration(500).style('opacity', 0);
+                svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
+            });
+
+        function mousemove(event) {
+            const [mouseX, mouseY] = d3.pointer(event);
+            const lap = Math.round(xScale.invert(mouseX));
+            if (lap < xDomain[0] || lap > xDomain[1]) {
+                tooltip.transition().duration(500).style('opacity', 0);
+                svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
+                return;
+            }
+
+            const selectedDriverIds = Array.from(document.querySelectorAll('.driver-button.selected'))
+                .map(button => +button.getAttribute('data-driver-id'));
+
+            if (selectedDriverIds.length === 0) {
+                tooltip.transition().duration(500).style('opacity', 0);
+                svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
+                return;
+            }
+
+            const lapTimesAtLap = driversWithLapTimes
+                .filter(driver => selectedDriverIds.includes(driver.driverId))
+                .map(driver => {
+                    const lapTime = driver.lapTimes.find(d => d.lap === lap);
+                    return {
+                        driverId: driver.driverId,
+                        driverName: driver.driverCode !== '\\N' ? driver.driverCode : driver.driverFamilyName,
+                        milliseconds: lapTime ? lapTime.milliseconds : null,
+                        lap: lapTime ? lapTime.lap : null
+                    };
+                })
+                .filter(d => d.milliseconds !== null);
+
+            if (lapTimesAtLap.length === 0) {
+                tooltip.transition().duration(500).style('opacity', 0);
+                svg.select('.lap-time-hover-circles-group').selectAll('circle').remove();
+                return;
+            }
+
+            let htmlContent = `<strong>Lap ${lap}</strong><br/><br/>`;
+            lapTimesAtLap.forEach(d => {
+                const color = colorScale(d.driverId);
+                const formattedTime = formatMilliseconds(d.milliseconds);
+                htmlContent += `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="width: 12px; height: 12px; background-color: ${color}; border-radius: 50%; display: inline-block;"></span>
+                        <span>${d.driverName}</span>
+                        <span>${formattedTime}</span>
+                    </div>
+                `;
+            });
+
+            tooltip.html(htmlContent)
+                .style('left', (event.pageX + 15) + 'px')
+                .style('top', (event.pageY - 28) + 'px')
+                .transition()
+                .duration(200)
+                .style('opacity', 0.9);
+
+            const hoverCirclesGroup = svg.select('.lap-time-hover-circles-group');
+            hoverCirclesGroup.selectAll('circle').remove();
+
+            lapTimesAtLap.forEach(d => {
+                hoverCirclesGroup.append('circle')
+                    .attr('cx', xScale(d.lap))
+                    .attr('cy', yScale(d.milliseconds))
+                    .attr('r', 6)
+                    .attr('fill', 'none')
+                    .attr('stroke', 'white')
+                    .attr('stroke-width', 2)
+                    .attr('pointer-events', 'none');
+            });
+        }
     }
 }
 
 function createDriverButtons(driversWithLapTimes) {
-
-    console.log(driversWithLapTimes);
 
     d3.select('#driver-buttons-container').remove();
 
@@ -1136,49 +1194,50 @@ function createDriverButtons(driversWithLapTimes) {
     const buttonContainer = d3.select('#lap-chart')
         .append('div')
         .attr('id', 'driver-buttons-container')
+        .style('max-width', '1330px')
         .style('display', 'flex')
         .style('flex-wrap', 'wrap')
         .style('gap', '10px')
         .style('justify-content', 'center')
         .style('margin-top', '20px');
 
-driversWithLapTimes.forEach(driver => {
-    const { driverId, driverCode, driverName, driverFamilyName } = driver;
-    const color = colorScale(driverId);
-    const displayName = driverCode !== '\\N' ? driverCode : driverFamilyName;
+    driversWithLapTimes.forEach(driver => {
+        const { driverId, driverCode, driverName, driverFamilyName } = driver;
+        const color = colorScale(driverId);
+        const displayName = driverCode !== '\\N' ? driverCode : driverFamilyName;
 
-    const button = buttonContainer.append('button')
-        .attr('class', 'driver-button')
-        .attr('data-driver-id', driverId)
-        .style('background', '#222')
-        .style('color', '#ee2a26')
-        .style('border', `2px solid transparent`)
-        .style('padding', '8px 12px')
-        .style('border-radius', '6px')
-        .style('cursor', 'pointer')
-        .style('font-family', 'Formula1')
-        .style('transition', 'border-color 0.2s ease')
-        .text(displayName)
-        .on('mouseover', function() {
-            d3.select(this).style('border-color', color);
-        }).on('mouseout', function() {
-            if (!d3.select(this).classed('selected')) {
-                d3.select(this).style('border-color', 'transparent');
+        const button = buttonContainer.append('button')
+            .attr('class', 'driver-button')
+            .attr('data-driver-id', driverId)
+            .style('background', '#222')
+            .style('color', '#ee2a26')
+            .style('border', `2px solid transparent`)
+            .style('padding', '8px 12px')
+            .style('border-radius', '6px')
+            .style('cursor', 'pointer')
+            .style('font-family', 'Formula1')
+            .style('transition', 'border-color 0.2s ease')
+            .text(displayName)
+            .on('mouseover', function() {
+                d3.select(this).style('border-color', color);
+            }).on('mouseout', function() {
+                if (!d3.select(this).classed('selected')) {
+                    d3.select(this).style('border-color', 'transparent');
+                }
+            });
+
+        button.on('click', function() {
+            const isSelected = d3.select(this).classed('selected');
+
+            if (isSelected) {
+                d3.select(this).classed('selected', false)
+                    .style('border-color', 'transparent');
+                toggleLapTimeChart(driversWithLapTimes, driverId, false);
+            } else {
+                d3.select(this).classed('selected', true)
+                    .style('border-color', color);
+                toggleLapTimeChart(driversWithLapTimes, driverId, true);
             }
-        });
-
-    button.on('click', function() {
-        const isSelected = d3.select(this).classed('selected');
-
-        if (isSelected) {
-            d3.select(this).classed('selected', false)
-                .style('border-color', 'transparent');
-            toggleLapTimeChart(driversWithLapTimes, driverId, false);
-        } else {
-            d3.select(this).classed('selected', true)
-                .style('border-color', color);
-            toggleLapTimeChart(driversWithLapTimes, driverId, true);
-        }
         });
     });
 }
@@ -1218,7 +1277,7 @@ function toggleLapTimeChart(driversWithLapTimes, driverId, shouldDisplay) {
             .attr('d', line)
             .style('opacity', 0);
 
-        entering.transition().duration(1000).style('opacity', 1);
+        entering.transition().duration(300).style('opacity', 1);
 
         const circlesGroup = linesGroup.selectAll(`.lap-time-driver-circles-group-${driverId}`)
             .data([driverData], d => driverId);
@@ -1236,10 +1295,8 @@ function toggleLapTimeChart(driversWithLapTimes, driverId, shouldDisplay) {
             .attr('r', 4)
             .attr('fill', color)
             .style('opacity', 0)
-            .on('mouseover', function(event, d) {})
-            .on('mouseout', function() {})
             .transition()
-            .duration(1000)
+            .duration(300)
             .style('opacity', 1);
 
         circlesGroup.exit().remove();
@@ -1265,4 +1322,339 @@ function formatMilliseconds(ms) {
     const seconds = totalSeconds % 60;
     const milliseconds = ms % 1000;
     return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+}
+
+function renderLapTimeBoxPlot(driversWithLapTimes) {
+    const section = d3.select('#box-plot-chart');
+
+    section.select('h2')
+        .transition()
+        .duration(300)
+        .style('opacity', 1);
+
+    const transitionDuration = 300;
+
+    const existingSvg = section.select('#lap-time-boxplot-svg');
+
+    if (!existingSvg.empty()) {
+        existingSvg.transition()
+            .duration(transitionDuration)
+            .style('opacity', 0)
+            .remove()
+            .on('end', appendNewSvgAndRender);
+    } else {
+        appendNewSvgAndRender();
+    }
+
+    function appendNewSvgAndRender() {
+        section.selectAll('.box-no-lap-data-message')
+            .transition()
+            .duration(transitionDuration)
+            .style('opacity', 0)
+            .remove();
+
+        section.select('#driver-buttons-container')
+            .transition()
+            .duration(transitionDuration)
+            .style('opacity', 0)
+            .remove();
+
+        let tooltip = section.select('.boxplot-tooltip');
+        if (tooltip.empty()) {
+            tooltip = section.append('div')
+                .attr('class', 'boxplot-tooltip')
+                .style('position', 'absolute')
+                .style('background', 'rgba(0, 0, 0, 0.8)')
+                .style('color', '#fff')
+                .style('padding', '10px')
+                .style('border-radius', '4px')
+                .style('pointer-events', 'none')
+                .style('opacity', 0)
+                .style('font-size', '12px')
+                .style('z-index', '10');
+        }
+
+        const driverStats = driversWithLapTimes.map(driver => {
+            const sortedTimes = driver.lapTimes
+                .map(d => d.milliseconds)
+                .filter(d => !isNaN(d))
+                .sort(d3.ascending);
+
+            if (sortedTimes.length === 0) {
+                return { 
+                    driverId: driver.driverId, 
+                    driverName: driver.driverCode !== '\\N' ? driver.driverCode : driver.driverFamilyName, 
+                    surname: driver.driverFamilyName || 'Unknown',
+                    forename: driver.driverName || 'Unknown', 
+                    median: 0, q1: 0, q3: 0, min: 0, max: 0
+                };
+            }
+            const median = d3.median(sortedTimes);
+            const q1 = d3.quantile(sortedTimes, 0.25);
+            const q3 = d3.quantile(sortedTimes, 0.75);
+            const min = d3.min(sortedTimes);
+            const max = d3.max(sortedTimes);
+
+            return {
+                driverId: driver.driverId,
+                driverName: driver.driverCode !== '\\N' ? driver.driverCode : driver.driverFamilyName,
+                surname: driver.driverFamilyName || 'Unknown',
+                forename: driver.forename || driver.driverName || 'Unknown',
+                median: median,
+                q1: q1,
+                q3: q3,
+                min: min,
+                max: max
+            };
+        });
+
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+            .domain(driverStats.map(d => d.driverId));
+
+        const filteredDriverStats = driverStats.filter(d => !(d.median === 0 && d.q1 === 0 && d.q3 === 0 && d.min === 0 && d.max === 0));
+
+        if (filteredDriverStats.length === 0) {
+            section.append('p')
+                .attr('class', 'box-no-lap-data-message')
+                .text('No lap time data available.')
+                .style('fill', '#fff')
+                .style('text-align', 'center');
+            return;
+        }
+
+        const margin = { top: 20, right: 20, bottom: 80, left: 100 };
+        const width = 1330 - margin.left - margin.right;
+        const height = 600 - margin.top - margin.bottom;
+
+        const xScale = d3.scaleBand()
+            .domain(filteredDriverStats.map(d => d.driverName))
+            .range([0, width])
+            .padding(0.4);
+
+        const yMin = d3.min(filteredDriverStats, d => d.min) * 0.95;
+        const yMax = d3.max(filteredDriverStats, d => d.max) * 1.05;
+        const yScale = d3.scaleLinear()
+            .domain([yMin, yMax])
+            .range([height, 0]);
+
+        const svg = section.append('svg')
+            .attr('id', 'lap-time-boxplot-svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom)
+            .style('background', '#222')
+            .style('border-radius', '8px')
+            .style('margin-top', '20px')
+            .style('display', 'block')
+            .style('margin-left', 'auto')
+            .style('margin-right', 'auto')
+            .style('opacity', 0); 
+        
+        const g = svg.append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+
+        g.append('g')
+            .attr('transform', `translate(0, ${height})`)
+            .call(d3.axisBottom(xScale))
+            .selectAll('text')
+            .attr('transform', 'rotate(45)')
+            .style('text-anchor', 'start')
+            .style('fill', d => {
+                const stat = filteredDriverStats.find(s => s.driverName === d);
+                return stat ? colorScale(stat.driverId) : '#fff';
+            })
+            .style('font-size', '14px')
+            .style('font-family', 'Formula1');
+
+        g.append('g')
+            .call(d3.axisLeft(yScale))
+            .selectAll('text')
+            .style('fill', '#fff')
+            .style('font-family', 'Formula1');
+
+        g.append('text')
+            .attr('transform', 'rotate(-90)')
+            .attr('y', -90)
+            .attr('x', -height / 2)
+            .attr('dy', '1em')
+            .style('text-anchor', 'middle')
+            .style('fill', '#fff')
+            .text('Lap Time (ms)');
+
+        g.append('g').attr('class', 'box-plots-group');
+        g.append('g').attr('class', 'legend-group');
+
+        drawBoxPlots(g, filteredDriverStats, xScale, yScale, colorScale);
+
+        svg.transition()
+            .duration(500)
+            .style('opacity', 1);
+
+        const hoverAreas = g.select('.box-plots-group')
+            .selectAll('.driver-hover-area')
+            .data(filteredDriverStats)
+            .enter()
+            .append('rect')
+            .attr('class', 'driver-hover-area')
+            .attr('x', d => xScale(d.driverName))
+            .attr('y', 0)
+            .attr('width', xScale.bandwidth())
+            .attr('height', height)
+            .attr('fill', 'transparent')
+            .on('mouseover', (event, d) => {
+                tooltip.transition()
+                    .duration(200)
+                    .style('opacity', 0.9);
+                tooltip.html(`
+                    <strong style="color: ${colorScale(d.driverId)};">${d.forename} ${d.surname}</strong><br>
+                    Max: ${formatMilliseconds(d.max)}<br>
+                    75th percentile: ${formatMilliseconds(d.q3)}<br>
+                    Median: ${formatMilliseconds(d.median)}<br>
+                    25th percentile: ${formatMilliseconds(d.q1)}<br>
+                    Min: ${formatMilliseconds(d.min)}
+                `);
+            })
+            .on('mousemove', (event) => {
+                tooltip.style('left', (event.pageX + 10) + 'px')
+                       .style('top', (event.pageY - 28) + 'px');
+            })
+            .on('mouseout', () => {
+                tooltip.transition()
+                    .duration(500)
+                    .style('opacity', 0);
+            });
+
+    }
+
+    function drawBoxPlots(g, data, xScale, yScale, colorScale) {
+        const boxGroup = g.select('.box-plots-group');
+
+        boxGroup.selectAll('.box')
+            .data(data)
+            .enter()
+            .append('rect')
+            .attr('class', 'box')
+            .attr('x', d => xScale(d.driverName))
+            .attr('width', xScale.bandwidth())
+            .attr('y', d => yScale(d.q3))
+            .attr('height', d => yScale(d.q1) - yScale(d.q3))
+            .attr('fill', d => colorScale(d.driverId))
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+
+        boxGroup.selectAll('.q1-line')
+            .data(data)
+            .enter()
+            .append('line')
+            .attr('class', 'q1-line')
+            .attr('x1', d => xScale(d.driverName))
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth())
+            .attr('y1', d => yScale(d.q1))
+            .attr('y2', d => yScale(d.q1))
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1)
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+
+        boxGroup.selectAll('.median-line')
+            .data(data)
+            .enter()
+            .append('line')
+            .attr('class', 'median-line')
+            .attr('x1', d => xScale(d.driverName))
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth())
+            .attr('y1', d => yScale(d.median))
+            .attr('y2', d => yScale(d.median))
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1)
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+
+        boxGroup.selectAll('.q3-line')
+            .data(data)
+            .enter()
+            .append('line')
+            .attr('class', 'q3-line')
+            .attr('x1', d => xScale(d.driverName))
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth())
+            .attr('y1', d => yScale(d.q3))
+            .attr('y2', d => yScale(d.q3))
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1)
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+
+        const capWidth = xScale.bandwidth() / 2;
+
+        boxGroup.selectAll('.whisker-min')
+            .data(data)
+            .enter()
+            .append('line')
+            .attr('class', 'whisker-min')
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2)
+            .attr('y1', d => yScale(d.q1))
+            .attr('y2', d => yScale(d.min))
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1)
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+
+        boxGroup.selectAll('.whisker-max')
+            .data(data)
+            .enter()
+            .append('line')
+            .attr('class', 'whisker-max')
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2)
+            .attr('y1', d => yScale(d.q3))
+            .attr('y2', d => yScale(d.max))
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1)
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+
+        boxGroup.selectAll('.cap-min')
+            .data(data)
+            .enter()
+            .append('line')
+            .attr('class', 'cap-min')
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2 - capWidth / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2 + capWidth / 2)
+            .attr('y1', d => yScale(d.min))
+            .attr('y2', d => yScale(d.min))
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1)
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+
+        boxGroup.selectAll('.cap-max')
+            .data(data)
+            .enter()
+            .append('line')
+            .attr('class', 'cap-max')
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2 - capWidth / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2 + capWidth / 2)
+            .attr('y1', d => yScale(d.max))
+            .attr('y2', d => yScale(d.max))
+            .attr('stroke', 'white')
+            .attr('stroke-width', 1)
+            .style('opacity', 0)
+            .transition()
+            .duration(800)
+            .style('opacity', 1);
+    }
 }

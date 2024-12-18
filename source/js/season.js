@@ -71,11 +71,11 @@ const accidentStatusWeights = {
 
 
 async function main() {
-    const [circuits, races, drivers, constructors, driverStandings, constructorStandings, results, world, pitStops] = await Promise.all([
+    const [circuits, races, drivers, constructors, driverStandings, constructorStandings, results, world] = await Promise.all([
         d3.csv('data/Circuits.csv'),
         d3.csv('data/Races.csv'),
         d3.csv('data/drivers.csv'),
-        d3.csv('data/Constructors.csv'),
+        d3.csv('data/constructors.csv'),
         d3.csv('data/driver_standings.csv'),
         d3.csv('data/constructor_standings.csv'),
         d3.csv('data/results.csv'),
