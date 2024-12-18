@@ -644,6 +644,19 @@ function updateAverageTopSpeed(selectedYear) {
 
 function updateLegend() {
     d3.select('#legend-items').selectAll(".legend-item").remove();
+    var isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+    if (!isChrome) {
+        d3.select('#legend-items')
+            .append("div")
+            .style("color", "#ffffff")
+            .style("font-family", "Formula1")
+            .style("font-size", "14px")
+            // .style("margin", "10px")
+            .style("width", "210px")
+            .style("white-space", "normal")
+            .html("<br/>For the best experience,<br/>please view this page in <br/>Google Chrome.");
+        return;
+    }
     const circuits = colorScale.domain();
     const legendItems = d3.select('#legend-items').selectAll(".legend-item")
         .data(circuits)
