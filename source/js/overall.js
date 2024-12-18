@@ -20,7 +20,6 @@ let legendGroup;
 let previousDriverQTimesMap = new Map();
 let previousPitStopTimesMap = new Map();
 let driverConstructorMap = new Map();
-
 let xScaleConstructorWins, yScaleConstructorWins;
 let xAxisConstructorWins;
 let colorScaleConstructorWins;
@@ -28,6 +27,62 @@ let constructorLastYearMap = new Map();
 let allActiveConstructors = [];
 let barHeight = 30;
 let maxConstructorsCount = 0;
+let mapMode = 'drivers';
+let tooltipDriverNationality;
+let svgNationalityMap;
+let gCountriesNationality, gMarkersNationality;
+let projectionNationality, pathNationality;
+let worldDataNationality;
+let toggleButtonElement;
+const nationalityCoordinates = {
+    "American": {lat: 37.0902, lng: -95.7129},
+    "Argentine": {lat: -38.4161, lng: -63.6167},
+    "Australian": {lat: -25.2744, lng: 133.7751},
+    "Austrian": {lat: 47.5162, lng: 14.5501},
+    "Belgian": {lat: 50.5039, lng: 4.4699},
+    "Brazilian": {lat: -14.2350, lng: -51.9253},
+    "British": {lat: 55.3781, lng: -3.4360},
+    "Canadian": {lat: 56.1304, lng: -106.3468},
+    "Chilean": {lat: -35.6751, lng: -71.5430},
+    "Chinese": {lat: 35.8617, lng: 104.1954},
+    "Colombian": {lat: 4.5709, lng: -74.2973},
+    "Czech": {lat: 49.8175, lng: 15.4730},
+    "Danish": {lat: 56.2639, lng: 9.5018},
+    "Dutch": {lat: 52.1326, lng: 5.2913},
+    "East German": {lat: 51.1657, lng: 10.4515},
+    "Finnish": {lat: 61.9241, lng: 25.7482},
+    "French": {lat: 46.2276, lng: 2.2137},
+    "German": {lat: 51.1657, lng: 10.4515},
+    "Hungarian": {lat: 47.1625, lng: 19.5033},
+    "Indian": {lat: 20.5937, lng: 78.9629},
+    "Indonesian": {lat: -0.7893, lng: 113.9213},
+    "Irish": {lat: 53.1424, lng: -7.6921},
+    "Italian": {lat: 41.8719, lng: 12.5674},
+    "Japanese": {lat: 36.2048, lng: 138.2529},
+    "Liechtensteiner": {lat: 47.1660, lng: 9.5554},
+    "Malaysian": {lat: 4.2105, lng: 101.9758},
+    "Mexican": {lat: 23.6345, lng: -102.5528},
+    "Monegasque": {lat: 43.7384, lng: 7.4246},
+    "New Zealander": {lat: -40.9006, lng: 174.8860},
+    "Polish": {lat: 51.9194, lng: 19.1451},
+    "Portuguese": {lat: 39.3999, lng: -8.2245},
+    "Rhodesian": {lat: -19.0154, lng: 29.1549},
+    "Russian": {lat: 61.5240, lng: 105.3188},
+    "South African": {lat: -30.5595, lng: 22.9375},
+    "Spanish": {lat: 40.4637, lng: -3.7492},
+    "Swedish": {lat: 60.1282, lng: 18.6435},
+    "Swiss": {lat: 46.8182, lng: 8.2275},
+    "Thai": {lat: 15.8700, lng: 100.9925},
+    "Uruguayan": {lat: -32.5228, lng: -55.7658},
+    "Venezuelan": {lat: 6.4238, lng: -66.5897}
+};
+
+function getNationalityCoords(nationality) {
+
+    const baseNat = nationality.includes('-') ? nationality.split('-')[0] : nationality;
+
+    return nationalityCoordinates[baseNat] || nationalityCoordinates["American"];
+}
 
 function main() {
     const racesCsvPath = 'data/races.csv';
@@ -44,8 +99,9 @@ function main() {
         d3.csv(driversCsvPath),
         d3.csv(qualifyingCsvPath),
         d3.csv(constructorsCsvPath),
-        d3.csv(pitStopsCsvPath)
-    ]).then(function ([racesData, resultsData, circuitsData, driversData, qualifyingData, constructorsData, pitStopsData]) {
+        d3.csv(pitStopsCsvPath),
+        d3.json('data/world-110m.json')
+    ]).then(function ([racesData, resultsData, circuitsData, driversData, qualifyingData, constructorsData, pitStopsData, world]) {
         racesData.forEach(d => {
             d.raceId = +d.raceId;
             d.year = +d.year;
@@ -59,6 +115,8 @@ function main() {
         });
         circuitsData.forEach(d => {
             d.circuitId = +d.circuitId;
+            d.lat = +d.lat;
+            d.lng = +d.lng;
         });
         driversData.forEach(d => {
             d.driverId = +d.driverId;
@@ -96,7 +154,6 @@ function main() {
             const key = `${r.raceId}-${r.driverId}`;
             driverConstructorMap.set(key, r.constructorId);
         });
-
         const constructorYearsMap = d3.group(resultsDataGlobal, d => d.constructorId);
         constructorYearsMap.forEach((arr, cId) => {
             let years = arr.map(d => {
@@ -105,24 +162,23 @@ function main() {
             }).filter(y => y !== null);
             constructorLastYearMap.set(cId, d3.max(years));
         });
-
         let allConstructorsIds = Array.from(constructorLastYearMap.keys());
-
         allActiveConstructors = allConstructorsIds.slice().sort((a, b) => {
-
             const nameA = constructorNameMap.get(a) || "";
             const nameB = constructorNameMap.get(b) || "";
             return d3.ascending(nameA, nameB);
         });
         maxConstructorsCount = allActiveConstructors.length;
+        worldDataNationality = world;
         const years = Array.from(new Set(racesData.map(d => d.year))).sort((a, b) => a - b);
         initializeYearSlider(years);
         initializeRaceCountChart(years);
         initializeAverageTopSpeedChart(years);
-
         initializeConstructorWinsChart();
         createQualifyingTable();
         createPitStopTable();
+
+        initializeDriverNationalityMap();
         createInitialCharts(years);
     }).catch(console.error);
 }
@@ -338,7 +394,6 @@ function updateChartsUpToYear(selectedYear) {
     updateConstructorWins(selectedYear);
     updateDriverQualifyingTime(selectedYear);
     updateAveragePitStopTime(selectedYear);
-    updateCircuitDistributionMap(selectedYear);
     updateDriverNationalityMap(selectedYear);
 }
 
@@ -615,17 +670,13 @@ function updateLegend() {
 
 function initializeConstructorWinsChart() {
     colorScaleConstructorWins = d3.scaleOrdinal(d3.schemeTableau10);
-
-
     const container = d3.select('#constructor-wins');
     container.selectAll('*').remove();
-
     const wrapper = container.append('div')
         .style('position', 'relative')
         .style('width', '550px')
         .style('overflow', 'hidden')
         .style('margin', '0 auto');
-
     const axisSvgHeight = 20;
     const axisSvg = wrapper.append('svg')
         .attr('width', '600px')
@@ -642,11 +693,7 @@ function initializeConstructorWinsChart() {
         .style('width', '600px')
         .style('position', 'relative')
         .style('background', '#111');
-
-
     xScaleConstructorWins = d3.scaleLinear().range([0, 300]);
-
-
 }
 
 function updateConstructorWins(selectedYear) {
@@ -657,15 +704,12 @@ function updateConstructorWins(selectedYear) {
     const width = 600 - margin.left - margin.right;
     const axisWidth = 600;
     const axisHeight = 20;
-
     const totalBarHeight = maxConstructorsCount * barHeight;
     const barsSvgHeight = totalBarHeight + margin.top + margin.bottom;
     const filteredRaces = racesDataGlobal.filter(d => d.year <= selectedYear);
     const filteredRaceIds = new Set(filteredRaces.map(d => d.raceId));
     const winners = resultsDataGlobal.filter(d => filteredRaceIds.has(d.raceId) && d.positionOrder === 1);
-
     const constructorWinsMap = new Map(allActiveConstructors.map(cId => [cId, 0]));
-
     winners.forEach(w => {
         if (constructorWinsMap.has(w.constructorId)) {
             constructorWinsMap.set(w.constructorId, constructorWinsMap.get(w.constructorId) + 1);
@@ -678,20 +722,15 @@ function updateConstructorWins(selectedYear) {
         const wins = constructorWinsMap.get(constructorId) || 0;
         return {constructorId, name, wins, isActive};
     });
-
     constructorWinsData.sort((a, b) => d3.descending(a.wins, b.wins));
-
     xScaleConstructorWins.domain([0, d3.max(constructorWinsData, d => d.wins)]).nice();
-
     yScaleConstructorWins = d3.scaleBand()
         .domain(constructorWinsData.map(d => d.constructorId))
         .range([0, totalBarHeight])
         .padding(0.1);
-
     const axisSvg = wrapper.select('svg')
         .attr('width', axisWidth)
         .attr('height', axisHeight);
-
     const axisG = axisSvg.selectAll('.x-axis-cwins').data([null]);
     axisG.enter().append('g')
         .attr('class', 'x-axis-cwins')
@@ -706,7 +745,6 @@ function updateConstructorWins(selectedYear) {
         .style('stroke', '#ffffff');
     axisSvg.selectAll('text')
         .style("fill", "#ffffff");
-
     const barsDiv = wrapper.select('div');
     let barsSvg = barsDiv.select('svg.cw-bars-svg');
     if (barsSvg.empty()) {
@@ -722,7 +760,6 @@ function updateConstructorWins(selectedYear) {
         .attr('class', 'bars-group')
         .attr('transform', `translate(${margin.left},${margin.top})`);
     const gBars = gEnter.merge(g);
-
     const bars = gBars.selectAll('.constructor-bar')
         .data(constructorWinsData, d => d.constructorId);
     const t = d3.transition().duration(1000);
@@ -740,7 +777,6 @@ function updateConstructorWins(selectedYear) {
         .attr('height', yScaleConstructorWins.bandwidth())
         .attr('width', d => xScaleConstructorWins(d.wins))
         .attr('fill', d => d.isActive ? colorScaleConstructorWins(d.constructorId) : '#888');
-
     const labels = gBars.selectAll('.constructor-wins-label')
         .data(constructorWinsData, d => d.constructorId);
     labels.exit().remove();
@@ -760,7 +796,6 @@ function updateConstructorWins(selectedYear) {
         .attr('y', d => yScaleConstructorWins(d.constructorId) + yScaleConstructorWins.bandwidth() / 2)
         .style('opacity', 1)
         .text(d => d.wins);
-
     const teamLabels = gBars.selectAll('.constructor-label-group')
         .data(constructorWinsData, d => d.constructorId);
     teamLabels.exit().remove();
@@ -796,7 +831,59 @@ function updateConstructorWins(selectedYear) {
         .attr('y', d => yScaleConstructorWins(d.constructorId) + yScaleConstructorWins.bandwidth() / 2);
 }
 
+function createQualifyingTable() {
+    const container = d3.select('#driver-qualifying-time');
+    container.selectAll('*').remove();
+    const tableContainer = container.append('div')
+        .attr('id', 'qualifying-table-container')
+        .style('max-height', '300px')
+        .style('overflow-y', 'auto');
+    const table = tableContainer.append('table')
+        .attr('class', 'standings-table')
+        .style('border-collapse', 'collapse')
+        .style('width', '100%')
+        .style('font-family', 'Formula1')
+        .style('table-layout', 'fixed');
+    const thead = table.append('thead');
+    const headerRow = thead.append('tr');
+    headerRow.selectAll('th')
+        .data(['Pos', 'Driver', 'Team', 'Avg Qual. Time'])
+        .enter().append('th')
+        .text(d => d)
+        .style('text-align', 'center')
+        .style('vertical-align', 'middle')
+        .style('width', (d, i) => i === 0 ? '60px' : null);
+    table.append('tbody');
+}
+
+function createPitStopTable() {
+    const container = d3.select('#average-top-pit-stop-time');
+    container.selectAll('*').remove();
+    const tableContainer = container.append('div')
+        .attr('id', 'pitstop-table-container')
+        .style('max-height', '300px')
+        .style('overflow-y', 'auto');
+    const table = tableContainer.append('table')
+        .attr('class', 'standings-table')
+        .style('border-collapse', 'collapse')
+        .style('width', '100%')
+        .style('font-family', 'Formula1')
+        .style('table-layout', 'fixed');
+    const thead = table.append('thead');
+    const headerRow = thead.append('tr');
+    headerRow.selectAll('th')
+        .data(['Pos', 'Driver', 'Team', 'Avg Pit Stop Time'])
+        .enter().append('th')
+        .text(d => d)
+        .style('text-align', 'center')
+        .style('vertical-align', 'middle')
+        .style('width', (d, i) => i === 0 ? '60px' : null);
+    table.append('tbody');
+}
+
 function updateDriverQualifyingTime(selectedYear) {
+
+
     const container = d3.select('#driver-qualifying-time');
     const table = container.select('table.standings-table');
     if (table.empty()) {
@@ -896,7 +983,7 @@ function updateDriverQualifyingTime(selectedYear) {
     if (!dataToShow[0]?.message) {
         const newPositions = new Map();
         allRows.each(function (d) {
-            newPositions.set(d.driverId, this.getBoundingClientRect());
+            if (!d.message) newPositions.set(d.driverId, this.getBoundingClientRect());
         });
         allRows.style('background-color', (d, i) => i % 2 === 0 ? '#111' : '#222');
         allRows.each(function (d, i) {
@@ -945,57 +1032,8 @@ function updateDriverQualifyingTime(selectedYear) {
     }
 }
 
-function createQualifyingTable() {
-    const container = d3.select('#driver-qualifying-time');
-    container.selectAll('*').remove();
-    const tableContainer = container.append('div')
-        .attr('id', 'qualifying-table-container')
-        .style('max-height', '300px')
-        .style('overflow-y', 'auto');
-    const table = tableContainer.append('table')
-        .attr('class', 'standings-table')
-        .style('border-collapse', 'collapse')
-        .style('width', '100%')
-        .style('font-family', 'Formula1')
-        .style('table-layout', 'fixed');
-    const thead = table.append('thead');
-    const headerRow = thead.append('tr');
-    headerRow.selectAll('th')
-        .data(['Pos', 'Driver', 'Team', 'Avg Qual. Time'])
-        .enter().append('th')
-        .text(d => d)
-        .style('text-align', 'center')
-        .style('vertical-align', 'middle')
-        .style('width', (d, i) => i === 0 ? '60px' : null);
-    table.append('tbody');
-}
-
-function createPitStopTable() {
-    const container = d3.select('#average-top-pit-stop-time');
-    container.selectAll('*').remove();
-    const tableContainer = container.append('div')
-        .attr('id', 'pitstop-table-container')
-        .style('max-height', '300px')
-        .style('overflow-y', 'auto');
-    const table = tableContainer.append('table')
-        .attr('class', 'standings-table')
-        .style('border-collapse', 'collapse')
-        .style('width', '100%')
-        .style('font-family', 'Formula1')
-        .style('table-layout', 'fixed');
-    const thead = table.append('thead');
-    const headerRow = thead.append('tr');
-    headerRow.selectAll('th')
-        .data(['Pos', 'Driver', 'Team', 'Avg Pit Stop Time'])
-        .enter().append('th')
-        .text(d => d)
-        .style('text-align', 'center')
-        .style('vertical-align', 'middle')
-        .style('width', (d, i) => i === 0 ? '60px' : null);
-    table.append('tbody');
-}
-
 function updateAveragePitStopTime(selectedYear) {
+
     const container = d3.select('#average-top-pit-stop-time');
     const table = container.select('table.standings-table');
     if (table.empty()) {
@@ -1144,12 +1182,194 @@ function updateAveragePitStopTime(selectedYear) {
     }
 }
 
-function updateCircuitDistributionMap(selectedYear) {
+function updateDriverNationalityMap(selectedYear) {
+    if (!svgNationalityMap || !projectionNationality || !gMarkersNationality) return;
+    const duration = 1000;
+    let dataPoints = [];
+    const filteredRaces = racesDataGlobal.filter(d => d.year === selectedYear);
+    if (mapMode === 'drivers') {
 
+        const raceIds = new Set(filteredRaces.map(r => r.raceId));
+        const participatingDrivers = Array.from(new Set(resultsDataGlobal
+            .filter(r => raceIds.has(r.raceId))
+            .map(r => r.driverId)));
+        dataPoints = participatingDrivers.map(dId => {
+            const driver = driversDataGlobal.find(dd => dd.driverId === dId);
+            if (!driver) return null;
+            const nationality = driver.nationality;
+            const coord = getNationalityCoords(nationality);
+            const constructorId = (function () {
+                const driverResults = resultsDataGlobal.filter(rr => raceIds.has(rr.raceId) && rr.driverId === dId)
+                if (driverResults.length > 0) {
+                    driverResults.sort((a, b) => a.raceId - b.raceId);
+                    return driverResults[driverResults.length - 1].constructorId;
+                }
+                return null;
+            })();
+            return coord ? {
+                type: 'driver',
+                driverName: driver.forename + " " + driver.surname,
+                nationality: nationality,
+                constructorId: constructorId,
+                lat: coord.lat,
+                lng: coord.lng
+            } : null;
+        }).filter(x => x);
+    } else {
+
+        dataPoints = filteredRaces.map(r => {
+            const c = circuitsDataGlobal.find(cc => cc.circuitId === +r.circuitId);
+            if (!c) return null;
+            return {
+                type: 'circuit',
+                circuitName: c.name,
+                lat: c.lat,
+                lng: c.lng
+            };
+        }).filter(x => x);
+    }
+    const markers = gMarkersNationality.selectAll('circle.nationality-marker')
+        .data(dataPoints, d => d.type === 'driver' ? d.driverName : d.circuitName);
+    markers.exit()
+        .transition().duration(duration)
+        .style('opacity', 0)
+        .remove();
+    const enter = markers.enter().append('circle')
+        .attr('class', 'nationality-marker')
+        .attr('r', 5)
+        .attr('fill', 'red')
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 1)
+        .style('opacity', 0)
+        .on('mouseover', (event, d) => {
+            tooltipDriverNationality.transition().duration(200).style('opacity', 0.9);
+            if (d.type === 'driver') {
+                const teamName = d.constructorId && constructorNameMap.has(d.constructorId) ? constructorNameMap.get(d.constructorId) : 'Unknown Team';
+                const teamLogoPath = d.constructorId ? `images/team_logos/${d.constructorId}.png` : 'images/team_logos/default.png';
+                tooltipDriverNationality.html(`<strong>Driver:</strong> ${d.driverName}<br/>
+                <strong>Nationality:</strong> ${d.nationality}<br/>
+                <strong>Team:</strong> ${teamName} <img src="${teamLogoPath}" alt="${teamName}" class="team-logo-small" style="vertical-align:middle;width:20px;height:20px;margin-left:5px;"/>`)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+            } else {
+                tooltipDriverNationality.html(`<strong>Circuit:</strong> ${d.circuitName}`)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+            }
+        })
+        .on('mousemove', (event) => {
+            tooltipDriverNationality
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 28) + 'px');
+        })
+        .on('mouseout', () => {
+            tooltipDriverNationality.transition().duration(500).style('opacity', 0);
+        });
+    const allMarkers = enter.merge(markers);
+    allMarkers.transition().duration(duration)
+        .style('opacity', 1)
+        .attr('cx', d => projectionNationality([d.lng, d.lat])[0])
+        .attr('cy', d => projectionNationality([d.lng, d.lat])[1]);
 }
 
-function updateDriverNationalityMap(selectedYear) {
+function initializeDriverNationalityMap() {
+    const container = d3.select('#driver-nationality-map');
+    container.selectAll('*').remove();
+    container.style('position', 'relative');
 
+    const cardHeader = d3.select('#driver-nationality-map').node().parentNode.querySelector('h2');
+    const h2Selection = d3.select(cardHeader);
+
+    let titleTextSpan = h2Selection.select('.title-text');
+    if (titleTextSpan.empty()) {
+
+        const originalText = cardHeader.childNodes[0].textContent.trim();
+        cardHeader.childNodes[0].textContent = '';
+        d3.select(cardHeader)
+            .insert('span', ':first-child')
+            .attr('class', 'title-text')
+            .text(originalText);
+        titleTextSpan = h2Selection.select('.title-text');
+    }
+    d3.select('#driver-nationality-map').select('.toggle-button').remove();
+    toggleButtonElement = h2Selection.append('button')
+        .attr('class', 'toggle-button')
+        .style('margin-left', '15px')
+        .text('Show Circuit Distribution')
+        .on('click', toggleMapView);
+    h2Selection.style('display', 'flex').style('align-items', 'center');
+    tooltipDriverNationality = d3.select('body').append('div')
+        .attr('class', 'tooltip-driver-nationality')
+        .style('position', 'absolute')
+        .style('background-color', '#222')
+        .style('color', '#ffffff')
+        .style('padding', '8px')
+        .style('border-radius', '4px')
+        .style('pointer-events', 'none')
+        .style('opacity', 0)
+        .style('font-family', 'Formula1')
+        .style('font-size', '14px')
+        .style('box-shadow', '0px 0px 10px rgba(0,0,0,0.5)');
+    const width = 550, height = 360;
+    svgNationalityMap = container.append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .style('border', '1px solid #333')
+        .style('border-radius', '8px')
+        .style('background', '#222');
+    gCountriesNationality = svgNationalityMap.append('g').attr('class', 'countries-group');
+    gMarkersNationality = svgNationalityMap.append('g').attr('class', 'markers-group');
+    projectionNationality = d3.geoNaturalEarth1().scale(120).translate([width / 2, height / 2]);
+    pathNationality = d3.geoPath().projection(projectionNationality);
+    const worlddata = topojson.feature(worldDataNationality, worldDataNationality.objects.countries).features;
+    gCountriesNationality.selectAll('path.country')
+        .data(worlddata)
+        .enter().append('path')
+        .attr('class', 'country')
+        .attr('d', pathNationality)
+        .attr('fill', '#333')
+        .attr('stroke', '#111')
+        .attr('stroke-width', 0.5);
+    const zoom = d3.zoom()
+        .scaleExtent([1, 8])
+        .on('zoom', (event) => {
+            if (event.sourceEvent) event.sourceEvent.preventDefault();
+            gCountriesNationality.attr('transform', event.transform);
+            gMarkersNationality.selectAll('.nationality-marker')
+                .attr('cx', d => event.transform.applyX(projectionNationality([d.lng, d.lat])[0]))
+                .attr('cy', d => event.transform.applyY(projectionNationality([d.lng, d.lat])[1]));
+        });
+    svgNationalityMap.call(zoom)
+        .on("wheel", (event) => {
+            event.preventDefault();
+        }, {passive: false});
+}
+
+function fadeTitleText(newText) {
+    const titleTextSpan = d3.select('.title-text');
+    titleTextSpan.transition()
+        .duration(350)
+        .style('opacity', 0)
+        .on('end', function () {
+            titleTextSpan.text(newText);
+            titleTextSpan.transition()
+                .duration(350)
+                .style('opacity', 1);
+        });
+}
+
+function toggleMapView() {
+    if (mapMode === 'drivers') {
+        mapMode = 'circuits';
+        d3.select(this).text('Show Driver Nationality Distribution');
+        fadeTitleText('Circuit Distribution');
+    } else {
+        mapMode = 'drivers';
+        d3.select(this).text('Show Circuit Distribution');
+        fadeTitleText('Driver Nationality Distribution');
+    }
+    const selectedYear = +d3.select('#year-slider').property('value');
+    updateDriverNationalityMap(selectedYear);
 }
 
 document.addEventListener('DOMContentLoaded', main);
