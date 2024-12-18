@@ -277,7 +277,7 @@ function getData(selectedRaceId) {
                 driverFullName: driverFullName,
                 forename: driverForenameMap[d.driverId] || 'Unknown',
                 surname: driverSurnameMap[d.driverId] || 'Unknown',
-                time: determineBestTime(d.q1, d.q2, d.q3),
+                time: determineTime(d.q1, d.q2, d.q3),
                 constructorId: matchingResult ? matchingResult.constructorId : null,
                 constructorName: matchingResult ? constructorNameMap[matchingResult.constructorId] : 'N/A'
             };
@@ -296,7 +296,8 @@ function getData(selectedRaceId) {
                 surname: driverSurnameMap[d.driverId] || 'Unknown',
                 time: d.time !== '\\N' ? d.time : statusMap[+d.statusId] || 'Unknown Status',
                 constructorId: d.constructorId,
-                constructorName: constructorNameMap[d.constructorId] || 'N/A'
+                constructorName: constructorNameMap[d.constructorId] || 'N/A',
+                laps: +d.laps
             }));
 
         lapTimesData.forEach(d => {
@@ -358,7 +359,7 @@ function getData(selectedRaceId) {
         updatePodium(podiumData);
         updateFastestLap(fastestLapData);
         updateStartingGrid(startingGrid);
-        updateFinishingGrid(finishingGrid);
+        updateFinishingGrid(finishingGrid, startingGrid);
         updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions, driverConstructorMap);
         renderLapTimeLineChart(driversWithLapTimes);
         renderLapTimeBoxPlot(driversWithLapTimes);
@@ -481,6 +482,11 @@ function updateStartingGrid(grid) {
 
     tbody.selectAll('tr').remove();
 
+    const driverIdMap = new Map(grid.map(d => [d.driverFullName, d.driverId]));
+        
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+        .domain(grid.map(d => d.driverId));
+
     if (grid.length === 0) {
         tbody.append('tr').append('td')
             .attr('colspan', 3)
@@ -504,8 +510,9 @@ function updateStartingGrid(grid) {
                 `);
 
             tr.append('td').text(row.time)
+            const driverId = driverIdMap.get(row.driverFullName);
             tr.on('mouseover', function(event) {
-                showTooltip(event, row.driverFullName, row.constructorName);
+                showTooltip(event, row.driverFullName, row.constructorName, driverId);
             })
             .on('mousemove', function(event) {
                 tooltip.style('left', (event.pageX + 10) + 'px')
@@ -540,11 +547,12 @@ function updateStartingGrid(grid) {
         .style('opacity', 0)
         .style('font-size', '12px');
 
-    function showTooltip(event, driverFullName, constructorName) {
+    function showTooltip(event, driverFullName, constructorName, driverId) {
+        const color = driverId ? colorScale(driverId) : '#fff';
         tooltip.transition()
             .duration(200)
             .style('opacity', 0.9);
-        tooltip.html(`<strong>${driverFullName}</strong><br>Constructor: ${constructorName}`)
+        tooltip.html(`<strong style="color: ${color};">${driverFullName}</strong><br>Constructor: ${constructorName}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
     }
@@ -556,16 +564,23 @@ function updateStartingGrid(grid) {
     }
 }
 
-function determineBestTime(q1, q2, q3) {
+function determineTime(q1, q2, q3) {
     if (q3 && q3 !== '\\N') return q3;
     if (q2 && q2 !== '\\N') return q2;
     if (q1 && q1 !== '\\N') return q1;
     return 'No Time Set';
 }
 
-function updateFinishingGrid(grid) {
+function updateFinishingGrid(grid, initialGridForColor) {
     const tbody = d3.select('#finishing-grid tbody');
     tbody.selectAll('tr').remove();
+
+    const driverIdMap = new Map(grid.map(d => [d.driverFullName, d.driverId]));
+        
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
+        .domain(initialGridForColor.map(d => d.driverId));
+
+    const maxLaps = d3.max(grid, d => d.laps);
 
     if (grid.length === 0) {
         tbody.append('tr').append('td')
@@ -577,23 +592,37 @@ function updateFinishingGrid(grid) {
         grid.forEach(row => {
             const driverDisplay = row.driverCode === '\\N' ? row.surname : row.driverCode;
             const timeStr = row.time;
-            const lowerTime = timeStr.toLowerCase();
 
             let displayPosition;
-            
-            if (lowerTime.includes('lap')) {
-                displayPosition = row.position;
-            } else if (
-                (/^\+\d+(\.\d+)?$/.test(timeStr)) || (timeStr.includes(':'))
-            ) {
-                displayPosition = row.position;
-            } else {
+        
+            const driverLaps = row.laps;
+            if (driverLaps < maxLaps * 0.9) {
                 displayPosition = 'DNF';
+            } else {
+                displayPosition = row.position;
+            }
+
+            let positionChangeSymbol = '';
+            if (!isNaN(parseInt(displayPosition))) {
+                const finishingPos = parseInt(displayPosition);
+                const startInfo = initialGridForColor.find(s => s.driverId === row.driverId);
+                if (startInfo) {
+                    const startingPos = startInfo.position;
+                    const diff = finishingPos - startingPos;
+
+                    if (diff < 0) {
+                        positionChangeSymbol = `<span style="color: #00ff00;">⋀</span><span> (+${-diff})</span>`;
+                    } else if (diff > 0) {
+                        positionChangeSymbol = `<span style="color: #ff0000;">⋁</span><span> (-${diff})</span>`;
+                    } else {
+                        positionChangeSymbol = `<span style="color: #aaaaaa;">−</span>`;
+                    }
+                }
             }
 
             const tr = tbody.append('tr')
                 .style('opacity', 0);
-            tr.append('td').text(displayPosition);
+            tr.append('td').html(`${displayPosition} ${positionChangeSymbol}`);
 
             tr.append('td')
                 .style('text-align', 'left')
@@ -605,8 +634,9 @@ function updateFinishingGrid(grid) {
                 `);
 
             tr.append('td').text(timeStr)
+            const driverId = driverIdMap.get(row.driverFullName);
             tr.on('mouseover', function(event) {
-                showTooltip(event, row.driverFullName, row.constructorName);
+                showTooltip(event, row.driverFullName, row.constructorName, driverId);
             })
             .on('mousemove', function(event) {
                 tooltip.style('left', (event.pageX + 10) + 'px')
@@ -641,11 +671,12 @@ function updateFinishingGrid(grid) {
         .style('opacity', 0)
         .style('font-size', '12px');
 
-    function showTooltip(event, driverFullName, constructorName) {
+    function showTooltip(event, driverFullName, constructorName, driverId) {
+        const color = driverId ? colorScale(driverId) : '#fff';
         tooltip.transition()
             .duration(200)
             .style('opacity', 0.9);
-        tooltip.html(`<strong>${driverFullName}</strong><br>Constructor: ${constructorName}`)
+        tooltip.html(`<strong style="color: ${color};">${driverFullName}</strong><br>Constructor: ${constructorName}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
     }
@@ -760,84 +791,82 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         const color = colorScale(driverId);
 
         let pathNode;
-        if (lapsData.length > 1) {
-            const path = linesGroup.append('path')
-                .datum(lapsData)
-                .attr('fill', 'none')
-                .attr('stroke', color)
-                .attr('stroke-width', 2)
-                .attr('d', line)
-                .attr('class', `position-driver-line position-driver-line-${driverId}`);
+        const path = linesGroup.append('path')
+            .datum(lapsData)
+            .attr('fill', 'none')
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('d', line)
+            .attr('class', `position-driver-line position-driver-line-${driverId}`);
 
-            const lastData = lapsData[lapsData.length - 1];
+        const lastData = lapsData[lapsData.length - 1];
 
-            svg.append('circle')
-                .attr('cx', xScale(lastData.lap))
-                .attr('cy', yScale(lastData.position))
-                .attr('r', 4)
-                .attr('fill', color)
-                .attr('class', `position-driver-circle position-driver-circle-${driverId}`)
-                .style('opacity', 1);
+        svg.append('circle')
+            .attr('cx', xScale(lastData.lap))
+            .attr('cy', yScale(lastData.position))
+            .attr('r', 4)
+            .attr('fill', color)
+            .attr('class', `position-driver-circle position-driver-circle-${driverId}`)
+            .style('opacity', 1);
 
-            pathNode = path.node();
-            const totalLength = pathNode.getTotalLength();
-            path
-                .attr('stroke-dasharray', totalLength + ' ' + totalLength)
-                .attr('stroke-dashoffset', totalLength);
+        pathNode = path.node();
+        const totalLength = pathNode.getTotalLength();
+        path
+            .attr('stroke-dasharray', totalLength + ' ' + totalLength)
+            .attr('stroke-dashoffset', totalLength);
 
-            hoverGroup.append('path')
-                .datum(lapsData)
-                .attr('fill', 'none')
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', 5)
-                .attr('d', line)
-                .attr('class', `driver-hover driver-hover-${driverId}`)
-                .style('cursor', 'pointer')
-                .on('mouseover', function(event) {
-                    d3.selectAll('.position-driver-line')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 0.3);
+        hoverGroup.append('path')
+            .datum(lapsData)
+            .attr('fill', 'none')
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 5)
+            .attr('d', line)
+            .attr('class', `driver-hover driver-hover-${driverId}`)
+            .style('cursor', 'pointer')
+            .on('mouseover', function(event) {
+                d3.selectAll('.position-driver-line')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 0.3);
 
-                    d3.selectAll('.position-driver-circle')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 0.3);
+                d3.selectAll('.position-driver-circle')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 0.3);
 
-                    d3.select(`.position-driver-line-${driverId}`)
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('stroke-width', 4);
+                d3.select(`.position-driver-line-${driverId}`)
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('stroke-width', 4);
 
-                    d3.selectAll(`.position-driver-circle-${driverId}`)
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('r', 8);
-                    
-                    showTooltip(event, driverId);
-                })
-                .on('mousemove', function(event) {
-                    tooltip.style('left', (event.pageX + 10) + 'px')
-                           .style('top', (event.pageY - 28) + 'px');
-                })
-                .on('mouseout', function() {
-                    d3.selectAll('.position-driver-line')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('stroke-width', 2);
+                d3.selectAll(`.position-driver-circle-${driverId}`)
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('r', 8);
+                
+                showTooltip(event, driverId);
+            })
+            .on('mousemove', function(event) {
+                tooltip.style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 28) + 'px');
+            })
+            .on('mouseout', function() {
+                d3.selectAll('.position-driver-line')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('stroke-width', 2);
 
-                    d3.selectAll('.position-driver-circle')
-                        .transition()
-                        .duration(200)
-                        .style('opacity', 1)
-                        .attr('r', 4);
-                    
-                    hideTooltip();
-                });
-        }
+                d3.selectAll('.position-driver-circle')
+                    .transition()
+                    .duration(200)
+                    .style('opacity', 1)
+                    .attr('r', 4);
+                
+                hideTooltip();
+            });
     }
 
     const tooltip = d3.select('body').append('div')
@@ -855,10 +884,11 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
         const driverName = driverMap[driverId] || 'Unknown Driver';
         const constructorId = driverConstructorMap[driverId];
         const constructorName = constructorNameMap[constructorId] || 'N/A';
+        const color = colorScale(driverId);
         tooltip.transition()
             .duration(200)
             .style('opacity', 0.9);
-        tooltip.html(`<strong>${driverName}</strong><br>Constructor: ${constructorName}`)
+        tooltip.html(`<strong style="color: ${color};">${driverName}</strong><br>Constructor: ${constructorName}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 28) + 'px');
     }
@@ -928,7 +958,7 @@ function renderLapTimeLineChart(driversWithLapTimes) {
     }
 
     function appendNewSvgAndRender() {
-        container.selectAll('.no-lap-data-message')
+        container.selectAll('.line-no-lap-data-message')
             .transition()
             .duration(transitionDuration)
             .style('opacity', 0)
@@ -958,7 +988,7 @@ function renderLapTimeLineChart(driversWithLapTimes) {
 
         if (allLapData.length === 0) {
             container.append('div')
-                .attr('class', 'no-lap-data-message')
+                .attr('class', 'line-no-lap-data-message')
                 .style('display', 'flex')
                 .style('justify-content', 'center')
                 .style('align-items', 'center')
@@ -994,14 +1024,15 @@ function renderLapTimeLineChart(driversWithLapTimes) {
             .call(d3.axisBottom(xScale).tickFormat(d3.format('d')))
             .selectAll('text')
             .style('fill', 'white')
-            .attr('transform', 'rotate(45)')
-            .style('text-anchor', 'start');
+            .style('text-anchor', 'middle')
+            .style('font-family', 'Formula1');
 
         svg.append('g')
             .attr('transform', `translate(${margin.left},0)`)
             .call(d3.axisLeft(yScale))
             .selectAll('text')
-            .style('fill', 'white');
+            .style('fill', 'white')
+            .style('font-family', 'Formula1');
 
         svg.append('text')
             .attr('x', width / 2)
@@ -1148,6 +1179,7 @@ function createDriverButtons(driversWithLapTimes) {
     const buttonContainer = d3.select('#lap-chart')
         .append('div')
         .attr('id', 'driver-buttons-container')
+        .style('max-width', '1330px')
         .style('display', 'flex')
         .style('flex-wrap', 'wrap')
         .style('gap', '10px')
@@ -1300,7 +1332,7 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
     }
 
     function appendNewSvgAndRender() {
-        section.selectAll('.no-lap-data-message')
+        section.selectAll('.box-no-lap-data-message')
             .transition()
             .duration(transitionDuration)
             .style('opacity', 0)
@@ -1312,16 +1344,33 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .style('opacity', 0)
             .remove();
 
+        let tooltip = section.select('.boxplot-tooltip');
+        if (tooltip.empty()) {
+            tooltip = section.append('div')
+                .attr('class', 'boxplot-tooltip')
+                .style('position', 'absolute')
+                .style('background', 'rgba(0, 0, 0, 0.8)')
+                .style('color', '#fff')
+                .style('padding', '10px')
+                .style('border-radius', '4px')
+                .style('pointer-events', 'none')
+                .style('opacity', 0)
+                .style('font-size', '12px')
+                .style('z-index', '10');
+        }
+
         const driverStats = driversWithLapTimes.map(driver => {
             const sortedTimes = driver.lapTimes
                 .map(d => d.milliseconds)
                 .filter(d => !isNaN(d))
                 .sort(d3.ascending);
+
             if (sortedTimes.length === 0) {
                 return { 
                     driverId: driver.driverId, 
-                    driverName: driver.driverCode, 
-                    fullName: `${driver.forename} ${driver.surname}`,
+                    driverName: driver.driverCode !== '\\N' ? driver.driverCode : driver.driverFamilyName, 
+                    surname: driver.driverFamilyName || 'Unknown',
+                    forename: driver.driverName || 'Unknown', 
                     median: 0, q1: 0, q3: 0, min: 0, max: 0
                 };
             }
@@ -1330,10 +1379,12 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             const q3 = d3.quantile(sortedTimes, 0.75);
             const min = d3.min(sortedTimes);
             const max = d3.max(sortedTimes);
+
             return {
                 driverId: driver.driverId,
                 driverName: driver.driverCode !== '\\N' ? driver.driverCode : driver.driverFamilyName,
-                fullName: `${driver.driverName} ${driver.driverFamilyName}`,
+                surname: driver.driverFamilyName || 'Unknown',
+                forename: driver.forename || driver.driverName || 'Unknown',
                 median: median,
                 q1: q1,
                 q3: q3,
@@ -1342,31 +1393,26 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             };
         });
 
-
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
             .domain(driverStats.map(d => d.driverId));
 
-        const fullNameToDriverId = new Map(driverStats.map(d => [d.fullName, d.driverId]));
-
-        const filteredDriverStats = driverStats.filter(d => !(d.median === 0 && d.q1 === 0 && d.q3 === 0));
-
-        console.log(filteredDriverStats)
+        const filteredDriverStats = driverStats.filter(d => !(d.median === 0 && d.q1 === 0 && d.q3 === 0 && d.min === 0 && d.max === 0));
 
         if (filteredDriverStats.length === 0) {
             section.append('p')
-                .attr('class', 'no-lap-data-message')
-                .text('No valid lap time data available to display.')
-                .style('fill', d => colorScale(fullNameToDriverId.get(d)) || '#fff')
+                .attr('class', 'box-no-lap-data-message')
+                .text('No lap time data available.')
+                .style('fill', '#fff')
                 .style('text-align', 'center');
             return;
         }
 
-        const margin = { top: 60, right: 20, bottom: 100, left: 100 };
-        const width = 1240 - margin.left - margin.right;
-        const height = 500 - margin.top - margin.bottom;
+        const margin = { top: 20, right: 20, bottom: 80, left: 100 };
+        const width = 1330 - margin.left - margin.right;
+        const height = 600 - margin.top - margin.bottom;
 
         const xScale = d3.scaleBand()
-            .domain(filteredDriverStats.map(d => d.fullName))
+            .domain(filteredDriverStats.map(d => d.driverName))
             .range([0, width])
             .padding(0.4);
 
@@ -1397,30 +1443,27 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .selectAll('text')
             .attr('transform', 'rotate(45)')
             .style('text-anchor', 'start')
-            .style('fill', '#fff')
-            .style('font-size', '12px');
+            .style('fill', d => {
+                const stat = filteredDriverStats.find(s => s.driverName === d);
+                return stat ? colorScale(stat.driverId) : '#fff';
+            })
+            .style('font-size', '14px')
+            .style('font-family', 'Formula1');
 
         g.append('g')
             .call(d3.axisLeft(yScale))
             .selectAll('text')
-            .style('fill', '#fff');
+            .style('fill', '#fff')
+            .style('font-family', 'Formula1');
 
         g.append('text')
             .attr('transform', 'rotate(-90)')
-            .attr('y', -80)
+            .attr('y', -90)
             .attr('x', -height / 2)
             .attr('dy', '1em')
             .style('text-anchor', 'middle')
             .style('fill', '#fff')
             .text('Lap Time (ms)');
-
-        g.append('text')
-            .attr('x', width / 2)
-            .attr('y', -30)
-            .attr('text-anchor', 'middle')
-            .style('fill', '#fff')
-            .style('font-size', '20px')
-            .text('Lap Time Box Plot');
 
         g.append('g').attr('class', 'box-plots-group');
         g.append('g').attr('class', 'legend-group');
@@ -1430,16 +1473,52 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
         svg.transition()
             .duration(500)
             .style('opacity', 1);
+
+        const hoverAreas = g.select('.box-plots-group')
+            .selectAll('.driver-hover-area')
+            .data(filteredDriverStats)
+            .enter()
+            .append('rect')
+            .attr('class', 'driver-hover-area')
+            .attr('x', d => xScale(d.driverName))
+            .attr('y', 0)
+            .attr('width', xScale.bandwidth())
+            .attr('height', height)
+            .attr('fill', 'transparent')
+            .on('mouseover', (event, d) => {
+                tooltip.transition()
+                    .duration(200)
+                    .style('opacity', 0.9);
+                tooltip.html(`
+                    <strong style="color: ${colorScale(d.driverId)};">${d.forename} ${d.surname}</strong><br>
+                    Max: ${formatMilliseconds(d.max)}<br>
+                    75th percentile: ${formatMilliseconds(d.q3)}<br>
+                    Median: ${formatMilliseconds(d.median)}<br>
+                    25th percentile: ${formatMilliseconds(d.q1)}<br>
+                    Min: ${formatMilliseconds(d.min)}
+                `);
+            })
+            .on('mousemove', (event) => {
+                tooltip.style('left', (event.pageX + 10) + 'px')
+                       .style('top', (event.pageY - 28) + 'px');
+            })
+            .on('mouseout', () => {
+                tooltip.transition()
+                    .duration(500)
+                    .style('opacity', 0);
+            });
+
     }
 
     function drawBoxPlots(g, data, xScale, yScale, colorScale) {
-        g.select('.box-plots-group')
-            .selectAll('.box')
+        const boxGroup = g.select('.box-plots-group');
+
+        boxGroup.selectAll('.box')
             .data(data)
             .enter()
             .append('rect')
             .attr('class', 'box')
-            .attr('x', d => xScale(d.fullName))
+            .attr('x', d => xScale(d.driverName))
             .attr('width', xScale.bandwidth())
             .attr('y', d => yScale(d.q3))
             .attr('height', d => yScale(d.q1) - yScale(d.q3))
@@ -1449,14 +1528,13 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .duration(800)
             .style('opacity', 1);
 
-        g.select('.box-plots-group')
-            .selectAll('.q1-line')
+        boxGroup.selectAll('.q1-line')
             .data(data)
             .enter()
             .append('line')
             .attr('class', 'q1-line')
-            .attr('x1', d => xScale(d.fullName))
-            .attr('x2', d => xScale(d.fullName) + xScale.bandwidth())
+            .attr('x1', d => xScale(d.driverName))
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth())
             .attr('y1', d => yScale(d.q1))
             .attr('y2', d => yScale(d.q1))
             .attr('stroke', 'white')
@@ -1466,14 +1544,13 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .duration(800)
             .style('opacity', 1);
 
-        g.select('.box-plots-group')
-            .selectAll('.median-line')
+        boxGroup.selectAll('.median-line')
             .data(data)
             .enter()
             .append('line')
             .attr('class', 'median-line')
-            .attr('x1', d => xScale(d.fullName))
-            .attr('x2', d => xScale(d.fullName) + xScale.bandwidth())
+            .attr('x1', d => xScale(d.driverName))
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth())
             .attr('y1', d => yScale(d.median))
             .attr('y2', d => yScale(d.median))
             .attr('stroke', 'white')
@@ -1483,14 +1560,13 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .duration(800)
             .style('opacity', 1);
 
-        g.select('.box-plots-group')
-            .selectAll('.q3-line')
+        boxGroup.selectAll('.q3-line')
             .data(data)
             .enter()
             .append('line')
             .attr('class', 'q3-line')
-            .attr('x1', d => xScale(d.fullName))
-            .attr('x2', d => xScale(d.fullName) + xScale.bandwidth())
+            .attr('x1', d => xScale(d.driverName))
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth())
             .attr('y1', d => yScale(d.q3))
             .attr('y2', d => yScale(d.q3))
             .attr('stroke', 'white')
@@ -1502,14 +1578,13 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
 
         const capWidth = xScale.bandwidth() / 2;
 
-        g.select('.box-plots-group')
-            .selectAll('.whisker-min')
+        boxGroup.selectAll('.whisker-min')
             .data(data)
             .enter()
             .append('line')
             .attr('class', 'whisker-min')
-            .attr('x1', d => xScale(d.fullName) + xScale.bandwidth() / 2)
-            .attr('x2', d => xScale(d.fullName) + xScale.bandwidth() / 2)
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2)
             .attr('y1', d => yScale(d.q1))
             .attr('y2', d => yScale(d.min))
             .attr('stroke', 'white')
@@ -1519,14 +1594,13 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .duration(800)
             .style('opacity', 1);
 
-        g.select('.box-plots-group')
-            .selectAll('.whisker-max')
+        boxGroup.selectAll('.whisker-max')
             .data(data)
             .enter()
             .append('line')
             .attr('class', 'whisker-max')
-            .attr('x1', d => xScale(d.fullName) + xScale.bandwidth() / 2)
-            .attr('x2', d => xScale(d.fullName) + xScale.bandwidth() / 2)
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2)
             .attr('y1', d => yScale(d.q3))
             .attr('y2', d => yScale(d.max))
             .attr('stroke', 'white')
@@ -1536,14 +1610,13 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .duration(800)
             .style('opacity', 1);
 
-        g.select('.box-plots-group')
-            .selectAll('.cap-min')
+        boxGroup.selectAll('.cap-min')
             .data(data)
             .enter()
             .append('line')
             .attr('class', 'cap-min')
-            .attr('x1', d => xScale(d.fullName) + xScale.bandwidth() / 2 - capWidth / 2)
-            .attr('x2', d => xScale(d.fullName) + xScale.bandwidth() / 2 + capWidth / 2)
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2 - capWidth / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2 + capWidth / 2)
             .attr('y1', d => yScale(d.min))
             .attr('y2', d => yScale(d.min))
             .attr('stroke', 'white')
@@ -1553,14 +1626,13 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .duration(800)
             .style('opacity', 1);
 
-        g.select('.box-plots-group')
-            .selectAll('.cap-max')
+        boxGroup.selectAll('.cap-max')
             .data(data)
             .enter()
             .append('line')
             .attr('class', 'cap-max')
-            .attr('x1', d => xScale(d.fullName) + xScale.bandwidth() / 2 - capWidth / 2)
-            .attr('x2', d => xScale(d.fullName) + xScale.bandwidth() / 2 + capWidth / 2)
+            .attr('x1', d => xScale(d.driverName) + xScale.bandwidth() / 2 - capWidth / 2)
+            .attr('x2', d => xScale(d.driverName) + xScale.bandwidth() / 2 + capWidth / 2)
             .attr('y1', d => yScale(d.max))
             .attr('y2', d => yScale(d.max))
             .attr('stroke', 'white')
