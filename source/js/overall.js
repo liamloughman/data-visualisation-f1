@@ -1059,7 +1059,7 @@ function updateAveragePitStopTime(selectedYear) {
         dataToShow = [{message: "No data available for this year."}];
     } else {
         const raceIds = filteredRaces.map(d => d.raceId);
-        const filteredPitStops = pitStopsDataGlobal.filter(p => raceIds.includes(p.raceId));
+        const filteredPitStops = pitStopsDataGlobal.filter(p => raceIds.includes(p.raceId) && p.milliseconds < 5 * 60 * 1000);
         if (filteredPitStops.length === 0) {
             dataToShow = [{message: "No pit stop data available for years before 2011."}];
         } else {
@@ -1241,19 +1241,24 @@ function updateDriverNationalityMap(selectedYear) {
             };
         }).filter(x => x);
     }
+
     const markers = gMarkersNationality.selectAll('circle.nationality-marker')
         .data(dataPoints, d => d.type === 'driver' ? d.driverName : d.circuitName);
+
     markers.exit()
         .transition().duration(duration)
         .style('opacity', 0)
         .remove();
+
     const enter = markers.enter().append('circle')
         .attr('class', 'nationality-marker')
-        .attr('r', 5)
+        .attr('r', 4)
         .attr('fill', 'red')
         .attr('stroke', '#fff')
         .attr('stroke-width', 1)
         .style('opacity', 0)
+        .attr('cx', d => projectionNationality([d.lng, d.lat])[0])
+        .attr('cy', d => projectionNationality([d.lng, d.lat])[1])
         .on('mouseover', (event, d) => {
             tooltipDriverNationality.transition().duration(200).style('opacity', 0.9);
             if (d.type === 'driver') {
@@ -1278,11 +1283,11 @@ function updateDriverNationalityMap(selectedYear) {
         .on('mouseout', () => {
             tooltipDriverNationality.transition().duration(500).style('opacity', 0);
         });
+
     const allMarkers = enter.merge(markers);
+
     allMarkers.transition().duration(duration)
-        .style('opacity', 1)
-        .attr('cx', d => projectionNationality([d.lng, d.lat])[0])
-        .attr('cy', d => projectionNationality([d.lng, d.lat])[1]);
+        .style('opacity', 1);
 }
 
 function initializeDriverNationalityMap() {
@@ -1347,11 +1352,12 @@ function initializeDriverNationalityMap() {
         .scaleExtent([1, 8])
         .on('zoom', (event) => {
             if (event.sourceEvent) event.sourceEvent.preventDefault();
-            gCountriesNationality.attr('transform', event.transform);
-            gMarkersNationality.selectAll('.nationality-marker')
-                .attr('cx', d => event.transform.applyX(projectionNationality([d.lng, d.lat])[0]))
-                .attr('cy', d => event.transform.applyY(projectionNationality([d.lng, d.lat])[1]));
+            currentTransform = event.transform;
+            // 对国家和标记的父容器同时进行缩放变换
+            gCountriesNationality.attr('transform', currentTransform);
+            gMarkersNationality.attr('transform', currentTransform);
         });
+
     svgNationalityMap.call(zoom)
         .on("wheel", (event) => {
             event.preventDefault();
@@ -1361,12 +1367,12 @@ function initializeDriverNationalityMap() {
 function fadeTitleText(newText) {
     const titleTextSpan = d3.select('.title-text');
     titleTextSpan.transition()
-        .duration(350)
+        .duration(325)
         .style('opacity', 0)
         .on('end', function () {
             titleTextSpan.text(newText);
             titleTextSpan.transition()
-                .duration(350)
+                .duration(325)
                 .style('opacity', 1);
         });
 }
