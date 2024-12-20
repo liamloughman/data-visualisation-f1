@@ -1702,6 +1702,10 @@ function addLapTimeChartButton(driversWithLapTimes) {
                     .style('left', '0')
                     .style('opacity', 0)
                     .on('click', function() {
+                        d3.select(this)
+                            .attr('disabled', true)
+                            .style('opacity', 0.5)
+                            .style('cursor', 'not-allowed');
                         removeOutliers(driversWithLapTimes);
                     })
                     .transition()
@@ -1736,6 +1740,10 @@ function addLapTimeChartButton(driversWithLapTimes) {
             .style('left', '0')
             .style('opacity', 0)
             .on('click', function() {
+                d3.select(this)
+                            .attr('disabled', true)
+                            .style('opacity', 0.5)
+                            .style('cursor', 'not-allowed');
                 removeOutliers(driversWithLapTimes);
             })
             .transition()
@@ -1761,7 +1769,7 @@ function removeOutliers(driversWithLapTimes) {
         
         const medianLapTime = d3.median(lapTimes);
         
-        const threshold = medianLapTime + 40000;
+        const threshold = medianLapTime + 15000;
         
         const filteredLapTimes = driver.lapTimes.filter(lap => lap.milliseconds <= threshold);
         

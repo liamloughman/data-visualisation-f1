@@ -366,6 +366,6 @@ button {
   transition: all 0.2s ease;
 }
 
-#lap-chart-header-container button:hover {
+#lap-chart-header-container button:not(:disabled):hover {
   border-color: #ee2a26;
 }
