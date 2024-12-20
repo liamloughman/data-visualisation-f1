@@ -679,7 +679,17 @@ function updateLegend() {
 }
 
 function initializeConstructorWinsChart() {
-    colorScaleConstructorWins = d3.scaleOrdinal(d3.schemeTableau10);
+    const colorArray = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+        "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+        "#bcbd22", "#17becf", "#9edae5", "#f7b6d2",
+        "#c7c7c7", "#dbdb8d", "#c49c94", "#ff9896",
+        "#98df8a", "#c5b0d5", "#ffbb78", "#aec7e8",
+        "#ffefc1", "#bdbc8b", "#e7c7d7", "#d8b5a5",
+        "#f7c680", "#b5dfea", "#f7b280", "#cbc5df",
+        "#7d7d7d", "#cfa2c5"
+    ];
+    colorScaleConstructorWins = d3.scaleOrdinal(colorArray);
     const container = d3.select('#constructor-wins');
     container.selectAll('*').remove();
     const wrapper = container.append('div')
