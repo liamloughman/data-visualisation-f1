@@ -325,6 +325,35 @@ async function main() {
     updateSeason(selectedYear,true);
     updatePitstopBoxPlot(selectedYear);
 
+    d3.selectAll('.top-row-container, .middle-row-container, .bottom-row-container')
+        .style('opacity', 0)
+        .style('transform', 'translateY(-20px)');
+
+    function showRowsSequentially() {
+        // Show top row
+        d3.select('.top-row-container')
+            .transition()
+            .duration(1000)
+            .style('opacity',1)
+            .style('transform','translateY(0px)')
+            .on('end', function() {
+                // Show middle row
+                d3.select('.middle-row-container')
+                    .transition()
+                    .duration(1000)
+                    .style('opacity',1)
+                    .style('transform','translateY(0px)')
+                    .on('end', function() {
+                        // Show bottom row
+                        d3.select('.bottom-row-container')
+                            .transition()
+                            .duration(1000)
+                            .style('opacity',1)
+                            .style('transform','translateY(0px)');
+                    });
+            });
+    }
+
     function toggleAnimation() {
         if(!animationInProgress){
             animationInProgress=true;
@@ -613,6 +642,7 @@ async function main() {
                 };
             }
             driverNameToId.set(displayName, d.driverId);
+        showRowsSequentially();
         });
     
         stableDriversKeys = Array.from(driverNamesSet);
@@ -1359,14 +1389,17 @@ async function main() {
             const durations = arr.map(d => d.milliseconds).filter(ms => !isNaN(ms));
             if (durations.length === 0) continue;
             durations.sort(d3.ascending);
-            const q1 = d3.quantile(durations, 0.25);
-            const median = d3.quantile(durations, 0.5);
-            const q3 = d3.quantile(durations, 0.75);
+    
+            // Convert to seconds
+            const durationsSec = durations.map(d => d / 1000);
+            const q1 = d3.quantile(durationsSec, 0.25);
+            const median = d3.quantile(durationsSec, 0.5);
+            const q3 = d3.quantile(durationsSec, 0.75);
             const iqr = q3 - q1;
             const lowerBound = q1 - 1.5 * iqr;
             const upperBound = q3 + 1.5 * iqr;
-            const min = d3.max([d3.min(durations), lowerBound]);
-            const max = d3.min([d3.max(durations), upperBound]);
+            const min = d3.max([d3.min(durationsSec), lowerBound]);
+            const max = d3.min([d3.max(durationsSec), upperBound]);
     
             boxData.push({
                 constructorId: cId,
@@ -1386,8 +1419,8 @@ async function main() {
     
         boxData.sort((a,b) => d3.ascending(a.constructorName, b.constructorName));
     
-        const margin = {top: 50, right: 20, bottom: 100, left: 60};
-        const width = 700;  // Updated to 700
+        const margin = {top: 50, right: 20, bottom: 100, left: 80};
+        const width = 700;  
         const height = 400;
     
         const svg = container.append('svg')
@@ -1419,6 +1452,7 @@ async function main() {
     
         const yAxis = d3.axisLeft(y).ticks(6);
     
+        // X-axis
         g.append('g')
             .attr('transform',`translate(0,${innerHeight})`)
             .call(xAxis)
@@ -1430,6 +1464,7 @@ async function main() {
             .attr('dx','-0.8em')
             .attr('dy','0.15em');
     
+        // Y-axis
         g.append('g')
             .call(yAxis)
             .selectAll('text')
@@ -1438,6 +1473,16 @@ async function main() {
     
         g.selectAll('.domain, .tick line')
             .attr('stroke','#fff');
+    
+        // Y-axis label
+        svg.append('text')
+            .attr('x', - (innerHeight / 2) - margin.top)
+            .attr('y', margin.left / 3)
+            .attr('transform', 'rotate(-90)')
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#fff')
+            .style('font-family','Formula1')
+            .text('Pit Stop Time (s)');
     
         const boxWidth = x.bandwidth();
         const halfBoxWidth = boxWidth / 2;
@@ -1485,7 +1530,26 @@ async function main() {
             .attr('fill','#ee2a26')
             .attr('fill-opacity',0.7)
             .attr('stroke','#fff')
-            .attr('stroke-width',1);
+            .attr('stroke-width',1)
+            // Add hover effect for tooltip
+            .on('mouseover', function(event, d){
+                tooltip.style('opacity',1)
+                       .html(`<strong>${d.constructorName}</strong><br/>
+                             Min: ${d.min.toFixed(3)}s<br/>
+                             Q1: ${d.q1.toFixed(3)}s<br/>
+                             Median: ${d.median.toFixed(3)}s<br/>
+                             Q3: ${d.q3.toFixed(3)}s<br/>
+                             Max: ${d.max.toFixed(3)}s`)
+                       .style('left',(event.pageX+10)+'px')
+                       .style('top',(event.pageY+10)+'px');
+            })
+            .on('mousemove', function(event){
+                tooltip.style('left',(event.pageX+10)+'px')
+                       .style('top',(event.pageY+10)+'px');
+            })
+            .on('mouseout', function(){
+                tooltip.style('opacity',0);
+            });
     
         // Median line
         boxGroups.append('line')
@@ -1495,8 +1559,9 @@ async function main() {
             .attr('y2', d => y(d.median))
             .attr('stroke','#fff')
             .attr('stroke-width',2);
-    
     }
+    
+    
     
     
     function calculateRaceIntensity(race, results, pitStops) {
@@ -1531,35 +1596,34 @@ async function main() {
     function initializeRaceIntensityHeatmap() {
         const container = d3.select('#race-intensity-container');
         container.selectAll('*').remove();
-    
+
         container.append('h2')
             .text("Race Intensity Heatmap")
             .style('text-align','center')
             .style('color','#ee2a26')
             .style('font-family','Formula1');
-    
-        // Increase the top margin from 50 to 70
+
         const margin = {top: 50, right: 20, bottom: 50, left: 60};
         const width = 700; 
         const height = 400;
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = height - margin.top - margin.bottom;
-    
+
         const svg = container.append('svg')
             .attr('width', width)
             .attr('height', height)
             .style('background','#222')
             .style('border-radius','8px');
-    
+
         const g = svg.append('g')
             .attr('transform', `translate(${margin.left},${margin.top})`);
-    
+
         const x = d3.scaleBand()
             .domain(raceIntensityData.map(d => d.round))
             .range([0, innerWidth])
             .padding(0.05);
-    
-        // X-axis label "Race"
+
+        // X-axis label
         svg.append('text')
             .attr('x', width / 2)
             .attr('y', height - (margin.bottom / 4))
@@ -1567,16 +1631,25 @@ async function main() {
             .attr('fill', '#fff')
             .style('font-family','Formula1')
             .text('Race');
-    
+
         const y = d3.scaleBand()
-            .domain(['Race Intensity'])
+            .domain([''])
             .range([0, innerHeight])
             .padding(0.1);
-    
+
+        // Rotated label for Intensity
+        // Position and rotate it near the left axis
+        svg.append('text')
+            .attr('transform', `translate(${margin.left/3}, ${margin.top + innerHeight/2}) rotate(-90)`)
+            .attr('text-anchor', 'middle')
+            .attr('fill','#fff')
+            .style('font-family','Formula1')
+            .text('Race Intensity');
+
         const color = d3.scaleSequential()
             .interpolator(d3.interpolateYlOrRd)
             .domain([0, d3.max(raceIntensityData, d => d.normalizedIntensity)]);
-    
+
         const xAxis = d3.axisBottom(x).tickFormat(d => `${d}`);
         g.append('g')
             .attr('class', 'x-axis')
@@ -1589,7 +1662,7 @@ async function main() {
             .attr('transform','rotate(-45)')
             .attr('dx','-0.8em')
             .attr('dy','0.15em');
-    
+
         const yAxis = d3.axisLeft(y);
         g.append('g')
             .attr('class', 'y-axis')
@@ -1597,7 +1670,7 @@ async function main() {
             .selectAll('text')
             .attr('fill','#fff')
             .style('font-family','Formula1');
-    
+
         g.selectAll('.heatmap-cell')
             .data(raceIntensityData)
             .enter().append('rect')
@@ -1643,7 +1716,7 @@ async function main() {
             .padding(0.05);
     
         const y = d3.scaleBand()
-            .domain(['Race Intensity'])
+            .domain([])  // No domain entries, no ticks.
             .range([0, innerHeight])
             .padding(0.1);
     
@@ -1663,11 +1736,11 @@ async function main() {
             .attr('dy','0.15em');
     
         const yAxis = d3.axisLeft(y);
-        g.select('.y-axis')
-            .call(yAxis)
-            .selectAll('text')
-            .attr('fill','#fff')
-            .style('font-family','Formula1');
+
+            // Draw Y-axis with no ticks
+        g.append('g')
+            .attr('class', 'y-axis')
+            .call(yAxis);
     
         const cells = g.selectAll('.heatmap-cell')
             .data(raceIntensityData);
@@ -1685,5 +1758,7 @@ async function main() {
             .attr('height', y.bandwidth())
             .attr('fill', d => color(d.normalizedIntensity));
     }
+
+    
     
 }
