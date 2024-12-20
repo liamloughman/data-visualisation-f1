@@ -78,9 +78,7 @@ const nationalityCoordinates = {
 };
 
 function getNationalityCoords(nationality) {
-
     const baseNat = nationality.includes('-') ? nationality.split('-')[0] : nationality;
-
     return nationalityCoordinates[baseNat] || nationalityCoordinates["American"];
 }
 
@@ -177,7 +175,6 @@ function main() {
         initializeConstructorWinsChart();
         createQualifyingTable();
         createPitStopTable();
-
         initializeDriverNationalityMap();
         createInitialCharts(years);
     }).catch(console.error);
@@ -895,8 +892,6 @@ function createPitStopTable() {
 }
 
 function updateDriverQualifyingTime(selectedYear) {
-
-
     const container = d3.select('#driver-qualifying-time');
     const table = container.select('table.standings-table');
     if (table.empty()) {
@@ -1046,7 +1041,6 @@ function updateDriverQualifyingTime(selectedYear) {
 }
 
 function updateAveragePitStopTime(selectedYear) {
-
     const container = d3.select('#average-top-pit-stop-time');
     const table = container.select('table.standings-table');
     if (table.empty()) {
@@ -1201,7 +1195,6 @@ function updateDriverNationalityMap(selectedYear) {
     let dataPoints = [];
     const filteredRaces = racesDataGlobal.filter(d => d.year === selectedYear);
     if (mapMode === 'drivers') {
-
         const raceIds = new Set(filteredRaces.map(r => r.raceId));
         const participatingDrivers = Array.from(new Set(resultsDataGlobal
             .filter(r => raceIds.has(r.raceId))
@@ -1229,7 +1222,6 @@ function updateDriverNationalityMap(selectedYear) {
             } : null;
         }).filter(x => x);
     } else {
-
         dataPoints = filteredRaces.map(r => {
             const c = circuitsDataGlobal.find(cc => cc.circuitId === +r.circuitId);
             if (!c) return null;
@@ -1241,15 +1233,12 @@ function updateDriverNationalityMap(selectedYear) {
             };
         }).filter(x => x);
     }
-
     const markers = gMarkersNationality.selectAll('circle.nationality-marker')
         .data(dataPoints, d => d.type === 'driver' ? d.driverName : d.circuitName);
-
     markers.exit()
         .transition().duration(duration)
         .style('opacity', 0)
         .remove();
-
     const enter = markers.enter().append('circle')
         .attr('class', 'nationality-marker')
         .attr('r', 4)
@@ -1283,9 +1272,7 @@ function updateDriverNationalityMap(selectedYear) {
         .on('mouseout', () => {
             tooltipDriverNationality.transition().duration(500).style('opacity', 0);
         });
-
     const allMarkers = enter.merge(markers);
-
     allMarkers.transition().duration(duration)
         .style('opacity', 1);
 }
@@ -1294,13 +1281,10 @@ function initializeDriverNationalityMap() {
     const container = d3.select('#driver-nationality-map');
     container.selectAll('*').remove();
     container.style('position', 'relative');
-
     const cardHeader = d3.select('#driver-nationality-map').node().parentNode.querySelector('h2');
     const h2Selection = d3.select(cardHeader);
-
     let titleTextSpan = h2Selection.select('.title-text');
     if (titleTextSpan.empty()) {
-
         const originalText = cardHeader.childNodes[0].textContent.trim();
         cardHeader.childNodes[0].textContent = '';
         d3.select(cardHeader)
@@ -1357,7 +1341,6 @@ function initializeDriverNationalityMap() {
             gCountriesNationality.attr('transform', currentTransform);
             gMarkersNationality.attr('transform', currentTransform);
         });
-
     svgNationalityMap.call(zoom)
         .on("wheel", (event) => {
             event.preventDefault();
@@ -1390,5 +1373,3 @@ function toggleMapView() {
     const selectedYear = +d3.select('#year-slider').property('value');
     updateDriverNationalityMap(selectedYear);
 }
-
-document.addEventListener('DOMContentLoaded', main);
