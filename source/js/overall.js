@@ -1337,7 +1337,6 @@ function initializeDriverNationalityMap() {
         .on('zoom', (event) => {
             if (event.sourceEvent) event.sourceEvent.preventDefault();
             currentTransform = event.transform;
-            // 对国家和标记的父容器同时进行缩放变换
             gCountriesNationality.attr('transform', currentTransform);
             gMarkersNationality.attr('transform', currentTransform);
         });
