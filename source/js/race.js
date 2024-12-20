@@ -1735,7 +1735,7 @@ function addLapTimeChartButton(driversWithLapTimes) {
         newHeaderContainer.append('button')
             .attr('id', 'left-lap-time-button')
             .attr('class', 'button-main')
-            .text('Remove Outliers (caused by Safety Cras, Red Flags or Pitstops)')
+            .text('Remove Outliers (caused by Safety Cras or Red Flags)')
             .style('position', 'absolute')
             .style('left', '0')
             .style('opacity', 0)
