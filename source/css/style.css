@@ -341,17 +341,7 @@ button {
   background-color: rgba(238, 42, 38, 0.2); /* Semi-transparent red background */
 }
 
-/* Heatmap Container */
-#race-intensity-container {
-  background: #222;
-  padding: 10px;
-  border-radius: 8px;
-}
 
-/* Heatmap Title */
-#race-intensity-container h2 {
-  margin-bottom: 10px;
-}
 
 /* Tooltip Styles (if not already defined) */
 .tooltip {
