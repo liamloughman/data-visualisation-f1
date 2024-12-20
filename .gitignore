@@ -88,4 +88,7 @@ fabric.properties
 .idea/misc.xml
 *.ipr
 
+.idea/
+.DS_Store
+
 # End of https://www.toptal.com/developers/gitignore/api/intellij+iml
