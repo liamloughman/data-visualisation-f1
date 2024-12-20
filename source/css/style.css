@@ -309,7 +309,7 @@ button {
 }
 
 .points-gain {
-  color: #00ff00; /* green increment */
+  color: #00ff00;
   font-weight: bold;
 }
 
@@ -338,10 +338,9 @@ button {
 .legend-item.selected {
   border: 2px solid #ee2a26;
   border-radius: 4px;
-  background-color: rgba(238, 42, 38, 0.2); /* Semi-transparent red background */
+  background-color: rgba(238, 42, 38, 0.2); 
 }
 
-/* Tooltip Styles (if not already defined) */
 .tooltip {
   position: absolute;
   background: rgba(51, 51, 51, 0.9);
