@@ -72,8 +72,8 @@ const accidentStatusWeights = {
 
 async function main() {
     const [circuits, races, drivers, constructors, driverStandings, constructorStandings, results, world, pitStops] = await Promise.all([
-        d3.csv('data/Circuits.csv'),
-        d3.csv('data/Races.csv'),
+        d3.csv('data/circuits.csv'),
+        d3.csv('data/races.csv'),
         d3.csv('data/drivers.csv'),
         d3.csv('data/constructors.csv'),
         d3.csv('data/driver_standings.csv'),
@@ -207,7 +207,7 @@ async function main() {
     const legendContainer = mainContainer.append('div')
     .attr('id','legend-container')
     .style('width','600px')
-    .style('margin','20px auto')
+    .style('margin','10px auto')
     .style('text-align','center');
 
 // MIDDLE ROW with Driver Consistency (left) and Constructor Contribution (right)
@@ -234,6 +234,7 @@ async function main() {
     .style('width','100%')
     .style('display','flex')
     .style('justify-content','center')
+    .style('margin-top','20px') 
     .style('margin-bottom','20px');
 
     const animateButton = buttonContainer.append('button')
@@ -341,9 +342,8 @@ async function main() {
         }
     }
 
-    function startAnimation(selectedYear){
+    function startAnimation(selectedYear) {
         if(driverConsistencyData.length === 0) {
-            // No data for animation
             showMessage("No data available for animation for this season.");
             animationInProgress=false;
             animateButton.text('Show Season Evolution');
@@ -352,9 +352,11 @@ async function main() {
     
         clearAllAnimationTimeouts();
         animatedLinePoints=[];
+        previousLineLength=0;  // Reset at the start of the animation
+    
+        // Do not remove the line or reset it each iteration. Just ensure it's cleared at the start.
         animatedLine.remove();
         animatedLine=gCountries.selectAll('path.animated-line');
-        previousLineLength=0;
     
         const seasonRaces=races.filter(r=>r.year===selectedYear).sort((a,b)=>a.round-b.round);
         if(seasonRaces.length===0){
@@ -418,39 +420,55 @@ async function main() {
                 updateConstructorContributionChart(snapshot.driverStandings,snapshot.constructorStandings);
             }
     
-            if(c){
+            if(c) {
                 animatedLinePoints.push({lat:c.lat,lng:c.lng});
             }
     
-            if(animatedLinePoints.length>1){
-                const lineGenerator=d3.line().curve(d3.curveCardinal)
-                    .x(dd=>projection([dd.lng,dd.lat])[0])
-                    .y(dd=>projection([dd.lng,dd.lat])[1]);
+            if(animatedLinePoints.length > 1){
+                const lineGenerator = d3.line().curve(d3.curveCardinal)
+                    .x(dd => projection([dd.lng, dd.lat])[0])
+                    .y(dd => projection([dd.lng, dd.lat])[1]);
     
-                animatedLine=gCountries.selectAll('path.animated-line')
+                // Bind data (just one array: animatedLinePoints)
+                let lineUpdate = gCountries.selectAll('path.animated-line')
                     .data([animatedLinePoints]);
     
-                animatedLine.exit().remove();
-    
-                const lineUpdate=animatedLine.enter()
+                // If no line exists yet, append one
+                lineUpdate = lineUpdate.enter()
                     .append('path')
                     .attr('class','animated-line')
                     .attr('fill','none')
                     .attr('stroke','#fff')
                     .attr('stroke-width',1.5)
-                    .merge(animatedLine)
-                    .attr('d',lineGenerator);
+                    .merge(lineUpdate);
     
-                // No animation for the line; directly set the path
-                // Optionally, set stroke-dasharray and dashoffset if you want to draw it, but no transition
-                d3.select(lineUpdate.node())
-                    .attr('stroke-dasharray', '0 ' + lineUpdate.node().getTotalLength())
-                    .attr('stroke-dashoffset', 0);
+                // Set the new 'd' attribute
+                lineUpdate.attr('d', lineGenerator);
+    
+                // Measure new total length after updating 'd'
+                const totalLength = lineUpdate.node().getTotalLength();
+    
+                // Animate only the newly added segment
+                const newSegmentLength = totalLength - previousLineLength;
+    
+                // To show previously drawn line, we set dasharray to totalLength
+                // and dashoffset to the amount that keeps old line visible
+                lineUpdate
+                    .attr('stroke-dasharray', totalLength + ' ' + totalLength)
+                    .attr('stroke-dashoffset', totalLength - previousLineLength)
+                    .transition()
+                    .duration(1500)
+                    .ease(d3.easeLinear)
+                    .attr('stroke-dashoffset', 0)
+                    .on('end', () => {
+                        // Update previousLineLength to current totalLength
+                        previousLineLength = totalLength;
+                    });
             }
     
             currentMaxRound = snapshot.round;
             // Update driver consistency chart
-            updateDriverConsistencyChart(currentMaxRound, true); 
+            updateDriverConsistencyChart(currentMaxRound, true);
     
             // Update Race Intensity Heatmap for the current snapshot
             const race = races.find(r => r.raceId === snapshot.raceId);
@@ -463,8 +481,6 @@ async function main() {
                     intensity: intensity,
                     normalizedIntensity: intensity / (d3.max(raceIntensityData, d => d.intensity) || 1)
                 };
-                
-                // Update the heatmap
                 updateRaceIntensityHeatmap();
             }
     
@@ -473,20 +489,19 @@ async function main() {
             index++;
         }
     }
-
     function stopAnimation(selectedYear){
         if(!animationInProgress)return;
         animationInProgress=false;
         clearAllAnimationTimeouts();
         animateButton.text('Show Season Evolution');
+        gCountries.selectAll('path.animated-line').remove();
         updateSeason(selectedYear,true);
     }
 
-    async function updateSeason(selectedYear, freshLoad = false){
+    function updateSeason(selectedYear, freshLoad = false){
         clearAllAnimationTimeouts();
         animationInProgress=false;
         animateButton.text('Show Season Evolution');
-        animatedLine.remove();
         previousLineLength=0;
     
         const seasonRaces = races.filter(r => r.year === selectedYear).sort((a, b) => a.round - b.round);
@@ -534,6 +549,13 @@ async function main() {
             .attr('stroke','#fff')
             .attr('stroke-width',1)
             .attr('opacity',0);
+        
+        raceCircles.transition()
+            .duration(500)
+            .attr('fill', 'red')        // Reset color to red
+            .attr('r', 5)               // Reset radius to 5
+            .style('opacity', 0.8);     // Reset opacity to 0.8
+    
     
         positionMarkers(gMarkers, projection, seasonCircuits);
         enterCircles.transition().delay(500).duration(500).style('opacity',0.8);
@@ -587,7 +609,7 @@ async function main() {
             } else {
                 driverLegendMap[displayName] = {
                     line1: displayName,
-                    line2: d.driverName
+                    line2: null
                 };
             }
             driverNameToId.set(displayName, d.driverId);
@@ -988,7 +1010,7 @@ async function main() {
         container.selectAll('*').remove();
 
         container.append('h2')
-            .text("Driver Consistency Tracker")
+            .text("Driver Standings Evolution")
             .style('text-align','center')
             .style('color','#ee2a26')
             .style('font-family','Formula1');
@@ -1519,7 +1541,7 @@ async function main() {
         // Increase the top margin from 50 to 70
         const margin = {top: 50, right: 20, bottom: 50, left: 60};
         const width = 700; 
-        const height = 300;
+        const height = 400;
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = height - margin.top - margin.bottom;
     
@@ -1581,7 +1603,7 @@ async function main() {
             .enter().append('rect')
             .attr('class', 'heatmap-cell')
             .attr('x', d => x(d.round))
-            .attr('y', 0)
+            .attr('y', (innerHeight - y.bandwidth()) / 2)
             .attr('width', x.bandwidth())
             .attr('height', y.bandwidth())
             .attr('fill', d => color(d.normalizedIntensity))
@@ -1608,9 +1630,10 @@ async function main() {
         const svg = container.select('svg');
         const g = svg.select('g');
     
-        const margin = {top: 10, right: 10, bottom: 10, left: 10};
-        const width = 700;
-        const height = 300;
+        // Increase the top margin from 50 to 70
+        const margin = {top: 50, right: 20, bottom: 50, left: 60};
+        const width = 700; 
+        const height = 400;
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = height - margin.top - margin.bottom;
     
@@ -1628,7 +1651,7 @@ async function main() {
             .interpolator(d3.interpolateYlOrRd)
             .domain([0, d3.max(raceIntensityData, d => d.normalizedIntensity)]);
     
-        const xAxis = d3.axisBottom(x).tickFormat(d => `Round ${d}`);
+        const xAxis = d3.axisBottom(x).tickFormat(d => `${d}`);
         g.select('.x-axis')
             .call(xAxis)
             .selectAll('text')
@@ -1657,7 +1680,7 @@ async function main() {
             .attr('stroke-width', 1)
             .merge(cells)
             .attr('x', d => x(d.round))
-            .attr('y', 0)
+            .attr('y', (innerHeight - y.bandwidth()) / 2)
             .attr('width', x.bandwidth())
             .attr('height', y.bandwidth())
             .attr('fill', d => color(d.normalizedIntensity));

@@ -362,8 +362,10 @@ function getData(selectedRaceId) {
         updateStartingGrid(startingGrid);
         updateFinishingGrid(finishingGrid, startingGrid, positionData);
         updatePositionChart(positionData, driverMap, driverCodeMap, constructorNameMap, startingGrid, finishingGrid, initialPositions, driverConstructorMap);
+        addLapTimeChartButton(driversWithLapTimes);
         renderLapTimeLineChart(driversWithLapTimes);
         renderLapTimeBoxPlot(driversWithLapTimes);
+        
 
     }).catch(console.error);
 }
@@ -951,10 +953,6 @@ function updatePositionChart(positionData, driverMap, driverCodeMap, constructor
 }
 
 function renderLapTimeLineChart(driversWithLapTimes) {
-    d3.select('#lap-chart > h2')
-        .transition()
-        .duration(300)
-        .style('opacity', 1);
 
     const container = d3.select('#lap-chart');
 
@@ -987,7 +985,7 @@ function renderLapTimeLineChart(driversWithLapTimes) {
 
         container.select('.lap-time-driver-lap-line').remove();
 
-        const width = container.node().getBoundingClientRect().width;
+        const width = 1330;
         const height = 500;
         const margin = { top: 20, right: 30, bottom: 50, left: 100 };
 
@@ -1031,8 +1029,6 @@ function renderLapTimeLineChart(driversWithLapTimes) {
             .style('border-radius', '8px')
             .style('margin-top', '20px')
             .style('opacity', 0);
-
-        svg.node().__lapTimeScales = { xScale, yScale, margin, width, height };
 
         svg.append('g')
             .attr('transform', `translate(0, ${height - margin.bottom})`)
@@ -1246,10 +1242,30 @@ function toggleLapTimeChart(driversWithLapTimes, driverId, shouldDisplay) {
     const svg = d3.select('#lap-time-chart-svg');
     if (svg.empty()) return;
 
-    const scales = svg.node().__lapTimeScales;
-    if (!scales) return;
+    const allLapData = driversWithLapTimes.flatMap(driver => 
+        driver.lapTimes.map(d => ({
+            driverId: driver.driverId, 
+            lap: d.lap, 
+            milliseconds: d.milliseconds,
+            driverCode: driver.driverCode,
+            driverFamilyName: driver.driverFamilyName
+        }))
+    );
 
-    const { xScale, yScale } = scales;
+    const width = 1330
+    const height = 500;
+    const margin = { top: 20, right: 30, bottom: 50, left: 100 };
+
+    const xDomain = [1, d3.max(allLapData, d => d.lap)];
+    const yDomain = [d3.min(allLapData, d => d.milliseconds), d3.max(allLapData, d => d.milliseconds)];
+
+    const xScale = d3.scaleLinear()
+            .domain(xDomain)
+            .range([margin.left, width - margin.right]);
+
+    const yScale = d3.scaleLinear()
+        .domain(yDomain)
+        .range([height - margin.bottom, margin.top]);
 
     const driverData = driversWithLapTimes.find(d => d.driverId === driverId);
     if (!driverData) return;
@@ -1657,4 +1673,101 @@ function renderLapTimeBoxPlot(driversWithLapTimes) {
             .duration(800)
             .style('opacity', 1);
     }
+}
+
+function addLapTimeChartButton(driversWithLapTimes) {
+    const section = d3.select('#lap-chart');
+    
+    const headerContainer = section.select('#lap-chart-header-container');
+    
+    if (!headerContainer.empty()) {
+        headerContainer.transition()
+            .duration(300)
+            .style("opacity", 0)
+            .remove()
+            .on('end', function() {
+                const newHeaderContainer = section.append('div')
+                    .attr('id', 'lap-chart-header-container')
+                    .style('display', 'flex')
+                    .style('justify-content', 'center')
+                    .style('align-items', 'center')
+                    .style('position', 'relative')
+                    .style('margin-bottom', '20px');
+    
+                newHeaderContainer.append('button')
+                    .attr('id', 'left-lap-time-button')
+                    .attr('class', 'button-main')
+                    .text('Remove Outliers (caused by Safety Cras, Red Flags or Pitstops)')
+                    .style('position', 'absolute')
+                    .style('left', '0')
+                    .style('opacity', 0)
+                    .on('click', function() {
+                        removeOutliers(driversWithLapTimes);
+                    })
+                    .transition()
+                    .duration(500)
+                    .style('opacity', 1);
+    
+                newHeaderContainer.append('h2')
+                    .text('Lap Time Chart')
+                    .style('color', '#ffff')
+                    .style('opacity', 0)
+                    .style('font-family', 'Formula1, sans-serif')
+                    .style('font-size', '24px')
+                    .style('margin', '0')
+                    .transition()
+                    .duration(300)
+                    .style('opacity', 1);
+            });
+    } else {
+        const newHeaderContainer = section.append('div')
+            .attr('id', 'lap-chart-header-container')
+            .style('display', 'flex')
+            .style('justify-content', 'center')
+            .style('align-items', 'center')
+            .style('position', 'relative')
+            .style('margin-bottom', '20px');
+    
+        newHeaderContainer.append('button')
+            .attr('id', 'left-lap-time-button')
+            .attr('class', 'button-main')
+            .text('Remove Outliers (caused by Safety Cras, Red Flags or Pitstops)')
+            .style('position', 'absolute')
+            .style('left', '0')
+            .style('opacity', 0)
+            .on('click', function() {
+                removeOutliers(driversWithLapTimes);
+            })
+            .transition()
+            .duration(500)
+            .style('opacity', 1);
+    
+        newHeaderContainer.append('h2')
+            .text('Lap Time Chart')
+            .style('color', '#ffff')
+            .style('opacity', 0)
+            .style('font-family', 'Formula1, sans-serif')
+            .style('font-size', '24px')
+            .style('margin', '0')
+            .transition()
+            .duration(300)
+            .style('opacity', 1);
+    }
+}
+
+function removeOutliers(driversWithLapTimes) {
+    driversWithLapTimes.forEach(driver => {
+        const lapTimes = driver.lapTimes.map(lap => lap.milliseconds);
+        
+        const medianLapTime = d3.median(lapTimes);
+        
+        const threshold = medianLapTime + 40000;
+        
+        const filteredLapTimes = driver.lapTimes.filter(lap => lap.milliseconds <= threshold);
+        
+        driver.lapTimes = filteredLapTimes;
+    });
+    
+    renderLapTimeLineChart(driversWithLapTimes);
+    renderLapTimeBoxPlot(driversWithLapTimes);
 }

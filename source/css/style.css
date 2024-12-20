@@ -341,18 +341,6 @@ button {
   background-color: rgba(238, 42, 38, 0.2); /* Semi-transparent red background */
 }
 
-/* Heatmap Container */
-#race-intensity-container {
-  background: #222;
-  padding: 10px;
-  border-radius: 8px;
-}
-
-/* Heatmap Title */
-#race-intensity-container h2 {
-  margin-bottom: 10px;
-}
-
 /* Tooltip Styles (if not already defined) */
 .tooltip {
   position: absolute;
@@ -365,4 +353,19 @@ button {
   font-size: 12px;
   opacity: 0;
   transition: opacity 0.3s;
+}
+
+#lap-chart-header-container button {
+  background: #222;
+  color: #ee2a26;
+  margin: 0 10px;
+  padding: 10px 20px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+#lap-chart-header-container button:hover {
+  border-color: #ee2a26;
 }
